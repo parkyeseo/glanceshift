@@ -35,6 +35,14 @@ const api = {
   getBrightness: (): Promise<number | null> =>
     ipcRenderer.invoke('glanceshift:get-brightness'),
 
+  /** 평가 CSV 저장 → userData/eval-logs/<filename>. 저장된 절대 경로 반환. */
+  saveEvalCsv: (filename: string, content: string): Promise<string> =>
+    ipcRenderer.invoke('glanceshift:save-eval-csv', filename, content),
+
+  /** 평가 로그 폴더를 Finder/Explorer 에서 연다. */
+  revealEvalFolder: (): Promise<string> =>
+    ipcRenderer.invoke('glanceshift:reveal-eval-folder'),
+
   /** main → renderer 이벤트 구독 */
   onToggleDebug: (cb: () => void): (() => void) => {
     const listener = (): void => cb()
@@ -52,6 +60,12 @@ const api = {
     const listener = (): void => cb()
     ipcRenderer.on('glanceshift:toggle-calibration', listener)
     return () => ipcRenderer.removeListener('glanceshift:toggle-calibration', listener)
+  },
+
+  onToggleEvaluation: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('glanceshift:toggle-evaluation', listener)
+    return () => ipcRenderer.removeListener('glanceshift:toggle-evaluation', listener)
   }
 }
 

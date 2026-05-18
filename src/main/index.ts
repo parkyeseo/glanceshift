@@ -13,11 +13,12 @@
  * 원칙상 오버레이는 기본적으로 "보이지 않는 캔버스"여야 한다.
  */
 
-import { app, BrowserWindow, globalShortcut, screen, ipcMain, session, systemPreferences } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen, ipcMain, session, systemPreferences, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { writeFile, mkdir } from 'node:fs/promises'
 import loudness from 'loudness'
 
 const execAsync = promisify(exec)
@@ -97,6 +98,11 @@ function registerShortcuts(): void {
   // 키보드 입력을 받을 수 있다. (renderer 의 keydown 은 window focus 가 있어야 동작)
   globalShortcut.register('CommandOrControl+Shift+K', () => {
     overlayWindow?.webContents.send('glanceshift:toggle-calibration')
+  })
+
+  // 평가 모드 토글
+  globalShortcut.register('CommandOrControl+Shift+E', () => {
+    overlayWindow?.webContents.send('glanceshift:toggle-evaluation')
   })
 
   // DevTools (분리 모드)
@@ -195,6 +201,24 @@ ipcMain.handle('glanceshift:get-brightness', async () => {
     }
   }
   return null
+})
+
+// 평가 CSV 저장 — userData/eval-logs/<filename>.csv
+ipcMain.handle('glanceshift:save-eval-csv', async (_e, filename: string, content: string) => {
+  const safeName = filename.replace(/[^\w.-]/g, '_')
+  const dir = join(app.getPath('userData'), 'eval-logs')
+  await mkdir(dir, { recursive: true })
+  const fullPath = join(dir, safeName)
+  await writeFile(fullPath, content, 'utf8')
+  return fullPath
+})
+
+// Finder/Explorer 에서 평가 폴더 열기
+ipcMain.handle('glanceshift:reveal-eval-folder', async () => {
+  const dir = join(app.getPath('userData'), 'eval-logs')
+  await mkdir(dir, { recursive: true })
+  shell.openPath(dir)
+  return dir
 })
 
 function installPermissionHandlers(): void {

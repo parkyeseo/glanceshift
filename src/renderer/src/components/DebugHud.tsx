@@ -245,7 +245,7 @@ export function DebugHud({
         <span className="value" style={{ color: 'rgba(255,255,255,0.4)' }}>idle (Phase 6)</span>
       </div>
       <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-        ⌘⇧D HUD · ⌘⇧M click-through · ⌘⇧K calibrate · ⌘⇧Q quit
+        ⌘⇧D HUD · ⌘⇧M click-through · ⌘⇧K calibrate · ⌘⇧E eval · ⌘⇧Q quit
       </div>
     </div>
   )

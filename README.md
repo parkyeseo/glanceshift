@@ -21,7 +21,8 @@ npm run dev
 | --- | --- |
 | `⌘⇧D` | 디버그 HUD 토글 (좌상단 패널 + 시선 도트) |
 | `⌘⇧M` | 마우스 click-through 토글 |
-| `⌘⇧K` | 시선 캘리브레이션 진입 (9-point, 점당 5클릭) |
+| `⌘⇧K` | 시선 캘리브레이션 진입 (3-phase wizard) |
+| `⌘⇧E` | 5×5 정확도 평가 + CSV 저장 |
 | `⌘⇧Q` | 종료 |
 
 캘리브레이션 중에는 자동으로 click-through 가 꺼져서 마우스로 점을 클릭할 수 있고, 종료(완료 또는 ESC)시 자동으로 다시 켜집니다.
@@ -37,6 +38,7 @@ npm run dev
 - [x] Phase 4 — GazeBar UI (edge-docked minimal sidebar with gaze hover)
 - [x] Phase 5 — Head Tilt 슬라이더 (roll → 0..1, Look & Cross style commit on hover release)
 - [x] Phase 7 — OS bridge: 볼륨 (loudness), 밝기 (macOS `brightness` CLI)
+- [x] Phase 8 — 5×5 grid 정확도 평가 + CSV 저장 (`⌘⇧E`)
 - [ ] Phase 4 — GazeBar UI
 - [ ] Phase 5 — Head tilt 슬라이더 (볼륨·밝기)
 - [ ] Phase 6 — XState FSM 통합

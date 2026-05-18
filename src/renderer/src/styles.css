@@ -310,6 +310,178 @@
 .calib-continue:hover { opacity: 0.85; }
 .calib-continue:active { opacity: 0.7; }
 
+/* ===== Evaluation overlay ===== */
+.eval-root {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 8500;
+}
+.eval-root.running {
+  background: rgba(8, 10, 14, 0.98);
+}
+
+.eval-prompt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: var(--gs-bg-translucent);
+  border: 1px solid var(--gs-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: 28px 36px;
+  max-width: 480px;
+  color: var(--gs-text);
+}
+.eval-prompt-wide { max-width: 640px; }
+.eval-prompt h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.eval-prompt p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--gs-text-dim);
+  line-height: 1.6;
+}
+
+.eval-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 12px;
+  text-align: left;
+}
+.eval-field label {
+  font-size: 10px;
+  color: var(--gs-text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.eval-field input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--gs-text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.eval-field input:focus {
+  outline: none;
+  border-color: rgba(90, 169, 255, 0.55);
+}
+.eval-field-row {
+  display: flex;
+  gap: 10px;
+}
+.eval-field-row .eval-field { flex: 1; }
+
+.eval-progress {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  text-align: center;
+}
+.eval-progress-text {
+  font-size: 12px;
+  color: var(--gs-text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+}
+.eval-progress-bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.eval-progress-fill {
+  height: 100%;
+  background: var(--gs-accent);
+  transition: width 200ms ease;
+}
+
+/* Target dot — prep 페이드인, measure 펄스 */
+@keyframes eval-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+  50%      { transform: translate(-50%, -50%) scale(1.4); opacity: 0.7; }
+}
+.eval-target {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--gs-accent);
+  box-shadow: 0 0 14px rgba(90, 169, 255, 0.6);
+}
+.eval-target.prep {
+  opacity: 0;
+  animation: eval-fadein 280ms ease forwards;
+}
+.eval-target.measure {
+  animation: eval-pulse 700ms ease-in-out infinite;
+}
+@keyframes eval-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.eval-stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin: 8px 0 16px;
+  flex-wrap: wrap;
+}
+.eval-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.eval-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gs-text-dim);
+}
+.eval-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--gs-text);
+}
+.eval-stat-sub {
+  font-size: 13px;
+  color: var(--gs-accent);
+  font-weight: 500;
+  margin-left: 6px;
+}
+
+.eval-miniplot {
+  display: block;
+  margin: 0 auto 16px;
+  background: transparent;
+}
+
+.eval-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .calib-dot {
   position: absolute;
   width: 28px;

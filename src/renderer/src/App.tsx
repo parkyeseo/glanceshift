@@ -17,6 +17,7 @@ import { GazeDot } from './components/GazeDot'
 import { Calibration } from './components/Calibration'
 import { EdgeZones } from './components/EdgeZones'
 import { GazeBar, type GazeBarItem } from './components/GazeBar'
+import { Evaluation } from './components/Evaluation'
 import { createGazeTracker, type GazeSample, type TrackerStatus } from './perception/webgazer'
 import {
   createHeadTracker,
@@ -61,6 +62,7 @@ export function App(): JSX.Element {
   const [head, setHead] = useState<HeadSample>(ZERO_HEAD)
 
   const [calibrating, setCalibrating] = useState(false)
+  const [evaluating, setEvaluating] = useState(false)
   const trackerRef = useRef<ReturnType<typeof createGazeTracker> | null>(null)
 
   // Edge detector — point/viewport 변경 시마다 update, snapshot 으로 HUD/시각화 갱신
@@ -142,10 +144,12 @@ export function App(): JSX.Element {
     const offDebug = window.glanceshift.onToggleDebug(() => setDebugVisible((v) => !v))
     const offCt = window.glanceshift.onClickThroughChange((enabled) => setClickThrough(enabled))
     const offCalib = window.glanceshift.onToggleCalibration(() => setCalibrating((v) => !v))
+    const offEval = window.glanceshift.onToggleEvaluation(() => setEvaluating((v) => !v))
     return () => {
       offDebug()
       offCt()
       offCalib()
+      offEval()
     }
   }, [])
 
@@ -165,14 +169,14 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('mousemove', onMove)
   }, [])
 
-  // 5) 캘리브레이션 진입/종료 시 click-through 토글
+  // 5) 캘리브레이션 / 평가 진입 시 click-through 해제, 종료 시 복귀
   useEffect(() => {
-    if (calibrating) {
+    if (calibrating || evaluating) {
       window.glanceshift.setClickThrough(false)
     } else {
       window.glanceshift.setClickThrough(true)
     }
-  }, [calibrating])
+  }, [calibrating, evaluating])
 
   // 어떤 입력을 표시할지
   const usingGaze = trackerStatus === 'ready' && gaze.x >= 0
@@ -337,6 +341,13 @@ export function App(): JSX.Element {
             setHasGazeData(false)
           }}
           head={head}
+        />
+      )}
+
+      {evaluating && (
+        <Evaluation
+          gazePoint={usingGaze ? { x: gaze.x, y: gaze.y } : null}
+          onDone={() => setEvaluating(false)}
         />
       )}
     </>
