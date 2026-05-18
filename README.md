@@ -36,6 +36,7 @@ npm run dev
 - [x] Phase 3.5+ — Multi-pose calibration + quality gating + edge boost
 - [x] Phase 4 — GazeBar UI (edge-docked minimal sidebar with gaze hover)
 - [x] Phase 5 — Head Tilt 슬라이더 (roll → 0..1, Look & Cross style commit on hover release)
+- [x] Phase 7 — OS bridge: 볼륨 (loudness), 밝기 (macOS `brightness` CLI)
 - [ ] Phase 4 — GazeBar UI
 - [ ] Phase 5 — Head tilt 슬라이더 (볼륨·밝기)
 - [ ] Phase 6 — XState FSM 통합
@@ -78,6 +79,15 @@ app/
 4. `zone` 값이 `LEFT/RIGHT/TOP/BOTTOM` 으로 정확히 바뀌는지 (가장자리 8%)
 
 캘리브레이션 데이터는 WebGazer가 localforage(IndexedDB)에 자동 저장하므로, 앱 재시작 후에도 유지됩니다.
+
+## 시스템 볼륨·밝기 결선 (Phase 7)
+
+- **볼륨** — `loudness` npm 패키지가 macOS 의 경우 `osascript` 를 통해 OS 볼륨을 조작합니다. 별도 설치 불필요.
+- **밝기** — macOS 에서는 [brightness CLI](https://github.com/nriley/brightness) 가 필요합니다:
+  ```
+  brew install brightness
+  ```
+  설치돼 있으면 머리 갸웃으로 디스플레이 밝기가 실시간으로 변합니다. 미설치 시 콘솔에 안내 한 번만 뜨고 GazeBar 의 brightness 항목은 시각적으로만 작동합니다 (실제 OS 밝기 변화 없음).
 
 ## 트러블슈팅
 

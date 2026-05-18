@@ -16,6 +16,11 @@
 import { app, BrowserWindow, globalShortcut, screen, ipcMain, session, systemPreferences } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
+import loudness from 'loudness'
+
+const execAsync = promisify(exec)
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -124,6 +129,72 @@ ipcMain.handle('glanceshift:get-camera-permission', async () => {
 ipcMain.handle('glanceshift:request-camera-permission', async () => {
   if (process.platform !== 'darwin') return true
   return systemPreferences.askForMediaAccess('camera')
+})
+
+// ===== OS Action Bridge — Phase 7 =====
+//
+// 시스템 볼륨은 loudness 패키지 (macOS 에선 내부적으로 osascript 호출).
+// 밝기는 macOS 의 경우 `brightness` brew CLI 가 있으면 사용, 없으면 silent fail.
+//   $ brew install brightness
+// 다른 OS 는 best-effort.
+
+ipcMain.handle('glanceshift:set-volume', async (_e, value: number) => {
+  const clamped = Math.max(0, Math.min(1, value))
+  try {
+    await loudness.setVolume(Math.round(clamped * 100))
+    return clamped
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[main] setVolume failed:', e)
+    return null
+  }
+})
+
+ipcMain.handle('glanceshift:get-volume', async () => {
+  try {
+    const v = await loudness.getVolume()
+    return v / 100
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('glanceshift:set-brightness', async (_e, value: number) => {
+  const clamped = Math.max(0, Math.min(1, value))
+  if (process.platform === 'darwin') {
+    try {
+      // brightness CLI (brew). 없으면 ENOENT.
+      await execAsync(`brightness ${clamped.toFixed(3)}`)
+      return clamped
+    } catch (e) {
+      // 한 번만 안내하고 이후엔 조용히 실패
+      if (!brightnessWarned) {
+        brightnessWarned = true
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[main] brightness control unavailable. Install with `brew install brightness` to enable.'
+        )
+      }
+      return null
+    }
+  }
+  return null
+})
+
+let brightnessWarned = false
+
+ipcMain.handle('glanceshift:get-brightness', async () => {
+  if (process.platform === 'darwin') {
+    try {
+      const { stdout } = await execAsync('brightness -l')
+      // 출력 예: "display 0: brightness 0.500000"
+      const match = stdout.match(/brightness\s+([\d.]+)/)
+      if (match) return parseFloat(match[1])
+    } catch {
+      // brightness CLI 없음 — null 반환, App 은 기본값 사용
+    }
+  }
+  return null
 })
 
 function installPermissionHandlers(): void {

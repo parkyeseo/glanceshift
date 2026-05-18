@@ -69,7 +69,7 @@ export function App(): JSX.Element {
     edgeDetectorRef.current.snapshot(performance.now())
   )
   const [gazeBarHoverId, setGazeBarHoverId] = useState<string | null>(null)
-  // 항목별 저장된 슬라이더 값 (commit 된 값) — Phase 7 의 OS bridge 가 이걸 읽어 적용
+  // 항목별 저장된 슬라이더 값 (commit 된 값) — OS bridge 가 이걸 읽어 적용
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({
     volume: 0.5,
     brightness: 0.5
@@ -79,6 +79,8 @@ export function App(): JSX.Element {
   // commit 처리용: 이전 hover id 를 추적, hover 가 끝나는 순간에 마지막 live 값을 저장
   const prevHoverRef = useRef<string | null>(null)
   const lastLiveRef = useRef<number | null>(null)
+  // OS bridge throttle — 같은 항목에 대해 100ms 마다 최대 1회 push
+  const lastOsPushRef = useRef<{ itemId: string | null; t: number }>({ itemId: null, t: 0 })
 
   // 1) 시선 + 머리 트래커 init — 카메라 권한 확인 후 순차 시작
   //     순서가 중요: WebGazer 가 video element 를 만든 다음에야 FaceLandmarker 가 그걸 잡을 수 있음.
@@ -228,9 +230,24 @@ export function App(): JSX.Element {
     const v = rollToValue(head.fRoll, DEFAULT_SLIDER_CONFIG)
     setLiveSliderValue(v)
     lastLiveRef.current = v
-  }, [engaged, head.fRoll])
 
-  // 9) Commit on hover release — hover 가 다른 항목/없음으로 바뀌면 직전 항목의 live 값을 저장
+    // OS bridge throttled push — 100ms 마다 최대 1회.
+    // 같은 항목으로 hover 가 시작됐을 때 (itemId 변화) 는 throttle reset.
+    const now = performance.now()
+    const last = lastOsPushRef.current
+    const reset = last.itemId !== gazeBarHoverId
+    if (reset || now - last.t >= 100) {
+      lastOsPushRef.current = { itemId: gazeBarHoverId, t: now }
+      if (gazeBarHoverId === 'volume') {
+        window.glanceshift.setVolume(v)
+      } else if (gazeBarHoverId === 'brightness') {
+        window.glanceshift.setBrightness(v)
+      }
+    }
+  }, [engaged, head.fRoll, gazeBarHoverId])
+
+  // 9) Commit on hover release — hover 가 다른 항목/없음으로 바뀌면 직전 항목의 live 값을 저장.
+  //    OS 에 최종 값을 한 번 더 push 해서 throttle 로 인한 마지막 값 누락을 방지.
   useEffect(() => {
     const prev = prevHoverRef.current
     if (prev && prev !== gazeBarHoverId && lastLiveRef.current != null) {
@@ -238,9 +255,40 @@ export function App(): JSX.Element {
       setSliderValues((cur) => ({ ...cur, [prev]: committed }))
       // eslint-disable-next-line no-console
       console.log(`[slider] COMMIT ${prev} = ${(committed * 100).toFixed(0)}%`)
+      if (prev === 'volume') {
+        window.glanceshift.setVolume(committed)
+      } else if (prev === 'brightness') {
+        window.glanceshift.setBrightness(committed)
+      }
+      lastOsPushRef.current = { itemId: null, t: 0 } // throttle reset
     }
     prevHoverRef.current = gazeBarHoverId
   }, [gazeBarHoverId])
+
+  // 10) 마운트 시 현재 OS 값 읽어 sliderValues 동기화 — GazeBar 가 떴을 때 현재 시스템 상태를
+  //     기준선으로 보여주기 위함. brightness 는 brightness CLI 없으면 null → 기본값 유지.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [v, b] = await Promise.all([
+          window.glanceshift.getVolume(),
+          window.glanceshift.getBrightness()
+        ])
+        if (cancelled) return
+        setSliderValues((cur) => ({
+          ...cur,
+          ...(v != null ? { volume: v } : {}),
+          ...(b != null ? { brightness: b } : {})
+        }))
+      } catch {
+        /* ignore */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <>

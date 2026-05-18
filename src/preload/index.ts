@@ -19,6 +19,22 @@ const api = {
   requestCameraPermission: (): Promise<boolean> =>
     ipcRenderer.invoke('glanceshift:request-camera-permission'),
 
+  /** OS 볼륨 설정 (0..1). 실패 시 null. */
+  setVolume: (value: number): Promise<number | null> =>
+    ipcRenderer.invoke('glanceshift:set-volume', value),
+
+  /** 현재 OS 볼륨 (0..1). 읽기 실패 시 null. */
+  getVolume: (): Promise<number | null> =>
+    ipcRenderer.invoke('glanceshift:get-volume'),
+
+  /** OS 밝기 설정 (0..1, macOS 는 brightness CLI 필요). 실패 시 null. */
+  setBrightness: (value: number): Promise<number | null> =>
+    ipcRenderer.invoke('glanceshift:set-brightness', value),
+
+  /** 현재 OS 밝기 (0..1). 읽기 실패 시 null. */
+  getBrightness: (): Promise<number | null> =>
+    ipcRenderer.invoke('glanceshift:get-brightness'),
+
   /** main → renderer 이벤트 구독 */
   onToggleDebug: (cb: () => void): (() => void) => {
     const listener = (): void => cb()
