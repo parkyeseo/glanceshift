@@ -27,6 +27,8 @@ type Props = {
   gazePoint: { x: number; y: number } | null
   /** 종료 콜백 */
   onDone: () => void
+  /** 현재 edge mode — condition 라벨에 자동 prefix */
+  edgeMode?: string
 }
 
 const N_ROWS = 5
@@ -55,10 +57,20 @@ function makeTargets(width: number, height: number): { x: number; y: number; idx
   return out
 }
 
-export function Evaluation({ gazePoint, onDone }: Props): JSX.Element {
+/** Condition 선택지 — 자세 변화 비교용 (mode prefix 는 자동 추가) */
+const POSE_PRESETS = [
+  { id: 'baseline-frontal', label: '정면 baseline' },
+  { id: 'yaw-15deg', label: '좌/우 15° 회전' },
+  { id: 'dist-far', label: '거리 +20cm' },
+  { id: 'dist-near', label: '거리 -10cm' },
+  { id: 'drift-5min', label: '5분 자유작업 후' }
+]
+
+export function Evaluation({ gazePoint, onDone, edgeMode }: Props): JSX.Element {
   const [phase, setPhase] = useState<Phase>('intro')
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
-  const [condition, setCondition] = useState('baseline-frontal')
+  const [pose, setPose] = useState<string>('baseline-frontal')
+  const condition = edgeMode ? `${edgeMode}__${pose}` : pose
   const [screenWidthCm, setScreenWidthCm] = useState<string>('')
   const [screenDistanceCm, setScreenDistanceCm] = useState<string>('')
   const [targetIdx, setTargetIdx] = useState(0)
@@ -185,14 +197,22 @@ export function Evaluation({ gazePoint, onDone }: Props): JSX.Element {
             <strong> 점의 중심을 응시해 주세요</strong>. ESC 로 취소.
           </p>
           <div className="eval-field">
-            <label>condition</label>
-            <input
-              type="text"
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              placeholder="baseline-frontal"
-              spellCheck={false}
-            />
+            <label>pose / condition</label>
+            <div className="eval-pose-grid">
+              {POSE_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`eval-pose-btn${pose === p.id ? ' active' : ''}`}
+                  onClick={() => setPose(p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+              저장될 condition: <code style={{ color: '#a8d2ff' }}>{condition}</code>
+            </div>
           </div>
           <div className="eval-field-row">
             <div className="eval-field">

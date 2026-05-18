@@ -374,6 +374,7 @@ export function App(): JSX.Element {
         <Evaluation
           gazePoint={usingGaze ? { x: gaze.x, y: gaze.y } : null}
           onDone={() => setEvaluating(false)}
+          edgeMode={edgeMode}
         />
       )}
     </>
