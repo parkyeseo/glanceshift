@@ -442,24 +442,3 @@ function inLockZone(gaze: Point, vp: Viewport, edge: Edge, lockZoneFrac: number)
   return pd / vpDim(vp, edge) < lockZoneFrac
 }
 
-/**
- * (Legacy) Entered 상태에서 effective gaze 를 변에 투영.
- * filtered/raw mode 의 경우 호출자가 사용 — perpendicular 만 강제, along 은 원본.
- * snapping mode 는 EdgeDetector 가 자체적으로 projectToRail 을 쓰므로 이 함수는 불필요.
- */
-export function snapToEdge(
-  point: Point,
-  edge: Edge,
-  viewport: Viewport
-): { x: number; y: number } {
-  switch (edge) {
-    case 'right':
-      return { x: viewport.w * 0.94, y: point.y }
-    case 'left':
-      return { x: viewport.w * 0.06, y: point.y }
-    case 'top':
-      return { x: point.x, y: viewport.h * 0.06 }
-    case 'bottom':
-      return { x: point.x, y: viewport.h * 0.94 }
-  }
-}

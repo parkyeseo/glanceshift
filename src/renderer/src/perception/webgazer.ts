@@ -65,16 +65,44 @@ function waitForWebGazer(timeoutMs = 8000): Promise<WebGazerAPI> {
   })
 }
 
+/**
+ * 마지막 valid sample 이후 STALE_MS 이상 sample 이 안 들어오면
+ * 1회 (-1,-1) sample 을 emit 해서 downstream (EdgeDetector / IntentTracker) 이
+ * stale gaze 로 인식하도록 한다. 얼굴 미검출/카메라 가림 등에서 false trigger 차단.
+ */
+const STALE_MS = 200
+const WATCHDOG_TICK_MS = 100
+
 export function createGazeTracker(): GazeTracker {
   const sampleListeners = new Set<(s: GazeSample) => void>()
   const statusListeners = new Set<(s: TrackerStatus, error?: string) => void>()
   const filter = new OneEuro2D({ freq: 60, mincutoff: 1.0, beta: 0.007 })
   let status: TrackerStatus = 'unloaded'
   let wg: WebGazerAPI | null = null
+  /** 마지막 valid sample 의 timestamp (ms). null = 아직 한 번도 안 들어옴. */
+  let lastSampleAt: number | null = null
+  /** stale 통지를 이미 한 번 보냈는지 — 같은 stale 구간 동안 중복 emit 안 하도록. */
+  let staleEmitted = false
+  let watchdogTimer: ReturnType<typeof setInterval> | null = null
 
   function setStatus(next: TrackerStatus, error?: string): void {
     status = next
     statusListeners.forEach((cb) => cb(next, error))
+  }
+
+  /** 마지막 sample 이 STALE_MS 이상 오래됐으면 1회 stale sample emit. */
+  function watchdogTick(): void {
+    if (status !== 'ready') return
+    if (lastSampleAt == null) return
+    if (staleEmitted) return
+    const now = performance.now()
+    if (now - lastSampleAt > STALE_MS) {
+      staleEmitted = true
+      // 필터 리셋해서 다음 valid sample 이 들어와도 stale 값과 보간되지 않게.
+      filter.reset()
+      const stale: GazeSample = { x: -1, y: -1, fx: -1, fy: -1, t: now }
+      sampleListeners.forEach((cb) => cb(stale))
+    }
   }
 
   async function start(): Promise<void> {
@@ -95,7 +123,12 @@ export function createGazeTracker(): GazeTracker {
 
       wg.setGazeListener((data) => {
         const t = performance.now()
-        if (!data) return // 얼굴 검출 실패 프레임
+        if (!data) {
+          // 얼굴 검출 실패 프레임 — watchdog 이 STALE_MS 이상 지속 시 stale emit.
+          return
+        }
+        lastSampleAt = t
+        staleEmitted = false
         const { x: fx, y: fy } = filter.filter(data.x, data.y, t)
         const s: GazeSample = { x: data.x, y: data.y, fx, fy, t }
         sampleListeners.forEach((cb) => cb(s))
@@ -126,6 +159,11 @@ export function createGazeTracker(): GazeTracker {
         // showXxx 가 일부 버전에서 throw 할 수 있어도 begin은 성공한 상태라 무시.
       }
 
+      // ready 직후 watchdog 시작
+      if (watchdogTimer == null) {
+        watchdogTimer = setInterval(watchdogTick, WATCHDOG_TICK_MS)
+      }
+
       setStatus('ready')
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -138,6 +176,12 @@ export function createGazeTracker(): GazeTracker {
     try {
       wg?.end()
     } catch { /* */ }
+    if (watchdogTimer != null) {
+      clearInterval(watchdogTimer)
+      watchdogTimer = null
+    }
+    lastSampleAt = null
+    staleEmitted = false
     setStatus('stopped')
   }
 

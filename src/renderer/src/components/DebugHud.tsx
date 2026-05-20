@@ -5,6 +5,7 @@
  * Cmd/Ctrl+Shift+D 단축키로만 띄운다.
  */
 
+import { memo } from 'react'
 import type { HeadSample, HeadTrackerStatus } from '../perception/face-landmarker'
 import type { EdgeSnapshot } from '../perception/edge-detector'
 
@@ -37,7 +38,7 @@ function statusColor(s?: string): string | undefined {
   return 'rgba(255,255,255,0.5)'
 }
 
-export function DebugHud({
+function DebugHudImpl({
   point,
   viewport,
   clickThrough,
@@ -47,10 +48,13 @@ export function DebugHud({
   headError,
   head,
   edge,
+  edgeMode,
   gazeBarHover,
   liveSliderValue,
   sliderValues
 }: Props): JSX.Element {
+  // edge snapshot 이 없을 때도 mode 라벨은 노출 — 디버그 시 어떤 mode 인지 항상 확인 가능.
+  const displayMode = edge?.modeLabel ?? edgeMode
   // 영역 분류 미리보기 (Phase 3 edge-detector 의 placeholder)
   const edgeFrac = 0.08
   const xFrac = point.x / viewport.w
@@ -179,7 +183,7 @@ export function DebugHud({
         </>
       )}
 
-      {edge && (
+      {displayMode && (
         <>
           <div className="hud-sep" />
           <div className="row">
@@ -188,16 +192,20 @@ export function DebugHud({
               className="value"
               style={{
                 color:
-                  edge.modeLabel === 'filtered'
+                  displayMode === 'filtered'
                     ? 'rgba(255,255,255,0.7)'
-                    : edge.modeLabel === 'raw'
+                    : displayMode === 'raw'
                       ? '#ffb084'
                       : '#7be38a'
               }}
             >
-              {edge.modeLabel}
+              {displayMode}
             </span>
           </div>
+        </>
+      )}
+      {edge && (
+        <>
           <div className="row">
             <span className="label">edge state</span>
             <span
@@ -322,3 +330,5 @@ export function DebugHud({
     </div>
   )
 }
+
+export const DebugHud = memo(DebugHudImpl)

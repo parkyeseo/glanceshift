@@ -15,7 +15,7 @@
  *   - 실제 선택(슬라이더 조작) 은 Phase 5 (head tilt) 에서 결선
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Edge } from '../perception/edge-detector'
 
 export type GazeBarItem = {
@@ -66,7 +66,7 @@ function computeGeometry(edge: Edge, viewport: { w: number; h: number }) {
   return { thickness, length, isVertical, bottom: 0, left: offset } // 'bottom'
 }
 
-export function GazeBar({
+function GazeBarImpl({
   edge,
   viewport,
   gazePoint,
@@ -236,3 +236,5 @@ export function GazeBar({
     </div>
   )
 }
+
+export const GazeBar = memo(GazeBarImpl)

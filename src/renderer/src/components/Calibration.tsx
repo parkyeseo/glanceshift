@@ -65,20 +65,33 @@ function makeEdgePoints(width: number, height: number, margin = 0.06): Point[] {
   ]
 }
 
-export function Calibration({ onPointClick, onDone, onClearCalibration, head }: Props): JSX.Element {
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
+export function Calibration({
+  onPointClick,
+  onDone,
+  onClearCalibration,
+  head,
+  viewport: viewportProp
+}: Props): JSX.Element {
+  // viewport prop 우선, 없으면 window 직접 관찰 (resize listener).
+  // prop 으로 받는 게 권장 (App 의 viewport state 와 동기화) — 미제공 시 fallback.
+  const [internalViewport, setInternalViewport] = useState({
+    w: window.innerWidth,
+    h: window.innerHeight
+  })
+  const viewport = viewportProp ?? internalViewport
   const [phase, setPhase] = useState<Phase>('pass-1')
   // 각 phase 별 클릭 카운트 (id → count)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [clearing, setClearing] = useState(false)
   const [rejectFlash, setRejectFlash] = useState<string | null>(null)
 
-  // resize
+  // resize — prop 으로 viewport 가 안 내려올 때만 활성
   useEffect(() => {
-    const onResize = (): void => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    if (viewportProp) return
+    const onResize = (): void => setInternalViewport({ w: window.innerWidth, h: window.innerHeight })
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [viewportProp])
 
   // onDone 의 최신 reference 를 ref 에 보관.
   // 부모(App) 가 매 render 마다 새 arrow function 을 prop 으로 내려보내므로
@@ -143,15 +156,18 @@ export function Calibration({ onPointClick, onDone, onClearCalibration, head }: 
       setTimeout(() => setRejectFlash((cur) => (cur === p.id ? null : cur)), 350)
       return
     }
-    const c = (counts[p.id] ?? 0) + 1
-    setCounts({ ...counts, [p.id]: c })
+    // functional update — 연속 클릭이 같은 micro-task batch 에서 발생해도 race 없음.
+    let nextSnapshot: Record<string, number> = {}
+    setCounts((prev) => {
+      const c = (prev[p.id] ?? 0) + 1
+      nextSnapshot = { ...prev, [p.id]: c }
+      return nextSnapshot
+    })
     onPointClick(p.x, p.y)
 
-    // 모두 채웠으면 다음 phase 로
-    const next = { ...counts, [p.id]: c }
-    const finished = points.every((q) => (next[q.id] ?? 0) >= CLICKS_PER_POINT)
+    // 모두 채웠으면 다음 phase 로 — setCounts 의 updater closure 안에서 계산한 snapshot 사용
+    const finished = points.every((q) => (nextSnapshot[q.id] ?? 0) >= CLICKS_PER_POINT)
     if (finished) {
-      // 다음 phase 결정
       setTimeout(() => {
         if (phase === 'pass-1') setPhase('between-1-2')
         else if (phase === 'pass-2') setPhase('between-2-edges')

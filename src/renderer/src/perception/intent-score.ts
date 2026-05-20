@@ -128,8 +128,11 @@ export class IntentTracker {
   private currentZoneEdge: Edge | null = null
   private lastNow: number | null = null
   private lastGaze: Point | null = null
+  // sample 객체와 그 내부 scores 객체를 재사용해 매 frame 의 GC 압박을 줄인다.
+  // 외부에 노출되는 reference 는 같지만 값은 in-place 로 갱신.
+  private sampleScores: Record<Edge, number> = { left: 0, right: 0, top: 0, bottom: 0 }
   private lastSample: IntentSample = {
-    scores: { left: 0, right: 0, top: 0, bottom: 0 },
+    scores: this.sampleScores,
     primary: null,
     zoneDwellMs: 0,
     lateralVelocity: 0,
@@ -143,18 +146,22 @@ export class IntentTracker {
   }
 
   reset(): void {
-    this.scores = { left: 0, right: 0, top: 0, bottom: 0 }
+    this.scores.left = 0
+    this.scores.right = 0
+    this.scores.top = 0
+    this.scores.bottom = 0
+    this.sampleScores.left = 0
+    this.sampleScores.right = 0
+    this.sampleScores.top = 0
+    this.sampleScores.bottom = 0
     this.zoneDwellMs = 0
     this.currentZoneEdge = null
     this.lastNow = null
     this.lastGaze = null
-    this.lastSample = {
-      scores: { left: 0, right: 0, top: 0, bottom: 0 },
-      primary: null,
-      zoneDwellMs: 0,
-      lateralVelocity: 0,
-      approachVelocity: 0
-    }
+    this.lastSample.primary = null
+    this.lastSample.zoneDwellMs = 0
+    this.lastSample.lateralVelocity = 0
+    this.lastSample.approachVelocity = 0
   }
 
   /** 가장 최근에 계산된 sample (외부에서 RAF 보강용으로 조회). */
@@ -259,8 +266,18 @@ export class IntentTracker {
     return this.lastSample
   }
 
-  /** primary 결정 = 최대 score 의 edge (score 0 이면 null). */
+  /**
+   * primary 결정 = 최대 score 의 edge (score 0 이면 null).
+   * lastSample / sampleScores 를 in-place 갱신해 매 frame 의 새 객체 할당을 피한다.
+   * 외부 호출자는 sample 의 reference 를 들고 있다가 다음 update 후 값이 바뀐 걸 볼 수 있다.
+   */
   private buildSample(lateralV: number, approachV: number): IntentSample {
+    // sampleScores 를 현재 scores 로 복사
+    this.sampleScores.left = this.scores.left
+    this.sampleScores.right = this.scores.right
+    this.sampleScores.top = this.scores.top
+    this.sampleScores.bottom = this.scores.bottom
+
     let bestEdge: Edge = 'left'
     let bestScore = 0
     for (const e of EDGES) {
@@ -269,13 +286,10 @@ export class IntentTracker {
         bestEdge = e
       }
     }
-    const primary = bestScore > 0 ? { edge: bestEdge, score: bestScore } : null
-    return {
-      scores: { ...this.scores },
-      primary,
-      zoneDwellMs: this.zoneDwellMs,
-      lateralVelocity: lateralV,
-      approachVelocity: approachV
-    }
+    this.lastSample.primary = bestScore > 0 ? { edge: bestEdge, score: bestScore } : null
+    this.lastSample.zoneDwellMs = this.zoneDwellMs
+    this.lastSample.lateralVelocity = lateralV
+    this.lastSample.approachVelocity = approachV
+    return this.lastSample
   }
 }

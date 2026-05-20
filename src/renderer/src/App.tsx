@@ -1,17 +1,18 @@
 /**
- * GlanceShift App (Phase 3)
+ * GlanceShift App — 최상위 컴포넌트.
  *
  * 입력 채널:
- * · 시선 — WebGazer + One Euro Filter, ⌘⇧K 로 9-point 캘리브
- * · 머리 자세 — WebGazer 의 face mesh landmarks 에서 직접 계산한 yaw/pitch/roll
+ *   · 시선  — WebGazer + One Euro Filter (raw mode 는 필터 off), ⌘⇧K 로 캘리브
+ *   · 머리  — face mesh landmarks 에서 직접 계산한 yaw/pitch/roll
  *
- * Phase 3 추가:
- * · Edge Gaze Detector — dwell + hysteresis 로 가장자리 진입/이탈 판정
- * · 디버그 모드에서 4개 가장자리 zone 시각화
- * · 진입/이탈 이벤트 콘솔 로그
+ * 핵심 책임:
+ *   · gaze/head/edge state 를 컴포넌트 트리로 prop 전달
+ *   · EdgeDetector 3-mode (filtered / raw / snapping) 갱신 (sample useEffect + RAF tick)
+ *   · activeControl latch (LATCH_MS) — 시선이 중앙으로 가도 head tilt 로 계속 조절 가능
+ *   · OS bridge (volume/brightness) throttled push + commit on release
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DebugHud } from './components/DebugHud'
 import { GazeDot } from './components/GazeDot'
 import { Calibration } from './components/Calibration'
@@ -55,7 +56,10 @@ const ZERO_HEAD: HeadSample = {
   landmarkCount: 0
 }
 
-// [MOD] 마지막으로 바라본 control 유지 시간 (ms)
+/**
+ * 마지막으로 hover 한 control 을 활성 상태로 유지하는 시간 (ms).
+ * 이 동안 시선이 중앙으로 돌아가도 head tilt 로 그 control 의 값을 계속 조절할 수 있다.
+ */
 const LATCH_MS = 3000
 
 export function App(): JSX.Element {
@@ -93,6 +97,11 @@ export function App(): JSX.Element {
     useRawGazeRef.current = edgeMode === 'raw'
   }, [edgeMode])
 
+  // EdgeDetector.update 의 마지막 호출 시각 (ms). sample useEffect 와 RAF tick 의
+  // 이중 호출 방지를 위해 사용 — 같은 frame 내 양쪽에서 update 가 일어나면 dt≈0 으로
+  // intent score 의 시간 적분이 약간 왜곡될 수 있다. 8ms 내 호출은 skip.
+  const lastEdgeUpdateAtRef = useRef(0)
+
   // Snap-in animation 표시 (lock 진입 직후 200ms 동안 GazeDot 의 강한 transition)
   const [snapAnimating, setSnapAnimating] = useState(false)
   const snapAnimTimerRef = useRef<number | null>(null)
@@ -114,9 +123,9 @@ export function App(): JSX.Element {
 
   const [gazeBarHoverId, setGazeBarHoverId] = useState<string | null>(null)
 
-  // [MOD] 마지막으로 바라본 control 을 잠깐 유지하는 latch 상태
-  const [latchedControlId, setLatchedControlId] = useState<string | null>(null)
-  const [latchExpiresAt, setLatchExpiresAt] = useState(0)
+  // 마지막으로 바라본 control 을 LATCH_MS (3000) 동안 유지한다 (PR #1 기능).
+  // 시선이 중앙으로 돌아가도 head tilt 로 계속 조절 가능. 만료 책임은 setTimeout 한 곳에만 둠.
+  const [activeControlId, setActiveControlId] = useState<string | null>(null)
   const latchTimerRef = useRef<number | null>(null)
 
   // 항목별 저장된 슬라이더 값 (commit 된 값) — OS bridge 가 이걸 읽어 적용
@@ -128,7 +137,7 @@ export function App(): JSX.Element {
   // 현재 hover/active 항목의 *live* 값 — head roll 로 매 프레임 계산
   const [liveSliderValue, setLiveSliderValue] = useState<number | null>(null)
 
-  // [MOD] hover 기준이 아니라 실제 active control 기준으로 commit 추적
+  // commit 추적 — hover 가 아니라 activeControl 변화 시 마지막 값을 OS 에 한 번 더 push
   const prevActiveRef = useRef<string | null>(null)
   const lastLiveRef = useRef<number | null>(null)
 
@@ -226,9 +235,17 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // 4) Fallback 입력: 마우스 좌표 (트래커가 ready 가 아닐 때)
+  // 4) Fallback 입력: 마우스 좌표 (gaze tracker 가 ready 가 아닐 때만).
+  //    gaze 가 작동 중일 땐 mousemove 가 setState 를 트리거하지 않게 막아
+  //    불필요한 30~60Hz rerender 를 차단한다.
+  const fallbackMouseRef = useRef(false)
+  useEffect(() => {
+    fallbackMouseRef.current = !(trackerStatus === 'ready' && hasGazeData)
+  }, [trackerStatus, hasGazeData])
+
   useEffect(() => {
     const onMove = (e: MouseEvent): void => {
+      if (!fallbackMouseRef.current) return
       setMouse({ x: e.clientX, y: e.clientY, t: performance.now() })
     }
 
@@ -253,11 +270,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (point.x < 0 || point.y < 0) return
 
+    const now = point.t || performance.now()
     const evt = edgeDetectorRef.current.update(
       { x: point.x, y: point.y },
       viewport,
-      point.t || performance.now()
+      now
     )
+    lastEdgeUpdateAtRef.current = now
 
     if (evt) {
       // eslint-disable-next-line no-console
@@ -281,6 +300,7 @@ export function App(): JSX.Element {
 
   // 7) dwelling/building 중에는 point 가 안 움직여도 progress 가 자라야 하므로 RAF 로 보강.
   // snapping mode 에선 intentTracker 도 매 frame 시간 적분이 필요하므로 update() 도 호출.
+  // gaze stale (point.x < 0) 인 경우에도 update 를 호출해 score 가 자연 decay 되도록.
   useEffect(() => {
     if (edgeSnapshot.state !== 'dwelling') return
 
@@ -288,9 +308,16 @@ export function App(): JSX.Element {
     const tick = (): void => {
       const now = performance.now()
 
-      if (edgeMode === 'snapping' && point.x >= 0 && point.y >= 0) {
-        // 같은 좌표라도 update() 를 불러야 dt 누적 (intent score / dwell)
-        const evt = edgeDetectorRef.current.update({ x: point.x, y: point.y }, viewport, now)
+      // sample useEffect 가 이미 update 했다면 (8ms 이내) skip — dt≈0 이중호출 방지.
+      const recentlyUpdated = now - lastEdgeUpdateAtRef.current < 8
+      if (edgeMode === 'snapping' && !recentlyUpdated) {
+        // point 가 stale (음수) 이면 사실상 null gaze. IntentTracker.update 는
+        // null/음수 좌표를 받으면 모든 edge score 를 decay 시킨다.
+        const validPoint = point.x >= 0 && point.y >= 0
+        const evt = validPoint
+          ? edgeDetectorRef.current.update({ x: point.x, y: point.y }, viewport, now)
+          : edgeDetectorRef.current.update({ x: -1, y: -1 }, viewport, now)
+        lastEdgeUpdateAtRef.current = now
 
         if (evt) {
           // eslint-disable-next-line no-console
@@ -329,6 +356,16 @@ export function App(): JSX.Element {
           ? 'mouse (needs calibration — ⌘⇧K)'
           : 'mouse (Phase 0 fallback)'
 
+  // 현재 mode 의 EdgeDetectorConfig — useMemo 로 reference 안정화. memo 된 자식 컴포넌트 들이
+  // EDGE_MODE_PROFILES[edgeMode] 를 매 render 다시 lookup 하는 비용 절감.
+  const currentProfile = useMemo(() => EDGE_MODE_PROFILES[edgeMode], [edgeMode])
+
+  // GazeBar onHoverChange — setState 함수는 React 가 stable reference 를 보장하므로
+  // 직접 setGazeBarHoverId 를 넘겨도 되지만, 명시적 useCallback 으로 의도를 분명히.
+  const handleHoverChange = useCallback((id: string | null) => {
+    setGazeBarHoverId(id)
+  }, [])
+
   // GazeBar 는 edge state 가 'entered' 인 동안 보임.
   // 추가로 — activeControl 이 latch 되어 있는 동안에는 시선이 중앙으로 돌아가도
   // 마지막으로 진입했던 edge 를 유지해 GazeBar 를 그대로 띄워둔다.
@@ -342,42 +379,36 @@ export function App(): JSX.Element {
 
   // effectiveGaze — snapping mode 의 lock 중에는 rail 위로 강제. perpendicular jitter 무관.
   // 그 외 mode 는 그냥 원본 point.
-  const effectiveGaze = useMemo<{ x: number; y: number } | null>(() => {
-    if (
-      edgeMode === 'snapping' &&
-      edgeSnapshot.state === 'entered' &&
-      edgeSnapshot.railCursor
-    ) {
-      return edgeSnapshot.railCursor
-    }
-
-    return point.x >= 0 ? { x: point.x, y: point.y } : null
-  }, [edgeMode, edgeSnapshot.state, edgeSnapshot.railCursor, point.x, point.y])
+  // useMemo 를 제거: deps 가 매 sample 마다 변하므로 메모이제이션 효과가 없고, 매 render
+  // 새 객체 할당이 동일하다.
+  const effectiveGaze: { x: number; y: number } | null =
+    edgeMode === 'snapping' && edgeSnapshot.state === 'entered' && edgeSnapshot.railCursor
+      ? edgeSnapshot.railCursor
+      : point.x >= 0
+        ? { x: point.x, y: point.y }
+        : null
 
   const useSnap = edgeMode === 'snapping'
   // GazeBar 의 항목 hover 계산은 effectiveGaze 를 사용 — snapping 중에는 rail 좌표.
   const gazeBarGaze = effectiveGaze
 
-  // [MOD] hover 가 생기면 마지막 선택 항목을 latch 로 저장하고 만료 시간을 갱신
+  // hover 가 생기면 그 항목으로 active 갱신 + 만료 timer reschedule.
+  // 만료 시점 책임은 이 setTimeout 안에서만 — derived value 가 아니라 명시적 state 전이.
   useEffect(() => {
     if (gazeBarHoverId == null) return
 
-    const expiresAt = performance.now() + LATCH_MS
-    setLatchedControlId(gazeBarHoverId)
-    setLatchExpiresAt(expiresAt)
+    setActiveControlId(gazeBarHoverId)
 
     if (latchTimerRef.current != null) {
       window.clearTimeout(latchTimerRef.current)
     }
-
     latchTimerRef.current = window.setTimeout(() => {
-      setLatchedControlId((cur) => (cur === gazeBarHoverId ? null : cur))
-      setLatchExpiresAt(0)
+      setActiveControlId((cur) => (cur === gazeBarHoverId ? null : cur))
       latchTimerRef.current = null
     }, LATCH_MS)
   }, [gazeBarHoverId])
 
-  // [MOD] cleanup 시 latch timer 정리
+  // unmount 시 latch timer 정리
   useEffect(() => {
     return () => {
       if (latchTimerRef.current != null) {
@@ -386,12 +417,6 @@ export function App(): JSX.Element {
       }
     }
   }, [])
-
-  // [MOD] 현재 조절 대상 결정: 마지막으로 선택된 control만 3초 동안 유지
-  const activeControlId =
-    latchedControlId != null && performance.now() < latchExpiresAt
-      ? latchedControlId
-      : null
 
   // gazeBarEdge — entered 상태이면 현재 edge, 그 외엔 activeControlId 가 살아있는 동안
   // 마지막 entered edge 로 fallback. 시선이 중앙으로 돌아가도 latch 동안 UI 유지.
@@ -402,10 +427,8 @@ export function App(): JSX.Element {
         ? lastEnteredEdgeRef.current
         : null
 
-  // 8) Slider engagement — hover 중인 항목이 있고 face 가 검출됐으면 head roll 로 live value 계산
-  //const engaged = gazeBarEdge != null && gazeBarHoverId != null && head.detected
-  // 8) Slider engagement — control 이 선택된 뒤에는 시선을 중앙으로 옮겨도 3초 동안 head roll 로 조절
-  // [MOD] edge 진입 상태와 무관하게 activeControlId + head.detected 만으로 engage
+  // 8) Slider engagement — activeControlId 가 latch 되어 있으면 시선이 중앙으로 옮겨가도
+  //    LATCH_MS 동안 head roll 로 조절 가능. edge 진입 상태와 분리된 활성 조건.
   const engaged = activeControlId != null && head.detected
 
   useEffect(() => {
@@ -434,8 +457,8 @@ export function App(): JSX.Element {
     }
   }, [engaged, head.fRoll, activeControlId])
 
-  // 9) Commit on active control release
-  // [MOD] hover 종료가 아니라 activeControl 종료/변경 시 commit
+  // 9) Commit on active control release — activeControlId 가 다른 항목/null 로 변하면
+  //    직전 항목의 마지막 live 값을 OS 에 한 번 더 push (throttle 누락 방지) + sliderValues 저장.
   useEffect(() => {
     const prev = prevActiveRef.current
 
@@ -490,9 +513,9 @@ export function App(): JSX.Element {
   return (
     <>
       <EdgeZones
-        enterFrac={EDGE_MODE_PROFILES[edgeMode].enterFrac}
-        intentZoneFrac={EDGE_MODE_PROFILES[edgeMode].snap?.intentZoneFrac ?? null}
-        lockZoneFrac={EDGE_MODE_PROFILES[edgeMode].snap?.lockZoneFrac ?? null}
+        enterFrac={currentProfile.enterFrac}
+        intentZoneFrac={currentProfile.snap?.intentZoneFrac ?? null}
+        lockZoneFrac={currentProfile.snap?.lockZoneFrac ?? null}
         viewport={viewport}
         snapshot={edgeSnapshot}
         visible={debugVisible}
@@ -503,7 +526,7 @@ export function App(): JSX.Element {
         viewport={viewport}
         gazePoint={gazeBarGaze}
         items={GAZEBAR_ITEMS}
-        onHoverChange={setGazeBarHoverId}
+        onHoverChange={handleHoverChange}
         valuesById={sliderValues}
         liveValue={liveSliderValue}
         snapHover={useSnap}

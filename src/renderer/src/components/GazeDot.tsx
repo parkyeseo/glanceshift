@@ -7,6 +7,8 @@
  * snap=true (snapping mode 전반) 이면 도트 자체에 옅은 강조 (조작 가능 상태 단서).
  */
 
+import { memo } from 'react'
+
 type Props = {
   x: number
   y: number
@@ -17,7 +19,7 @@ type Props = {
   snapAnimating?: boolean
 }
 
-export function GazeDot({ x, y, visible, snap, snapAnimating }: Props): JSX.Element | null {
+function GazeDotImpl({ x, y, visible, snap, snapAnimating }: Props): JSX.Element | null {
   if (!visible || x < 0 || y < 0) return null
   const cls = [
     'gaze-dot',
@@ -28,3 +30,5 @@ export function GazeDot({ x, y, visible, snap, snapAnimating }: Props): JSX.Elem
     .join(' ')
   return <div className={cls} style={{ left: x, top: y }} />
 }
+
+export const GazeDot = memo(GazeDotImpl)

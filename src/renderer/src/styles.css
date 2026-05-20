@@ -180,6 +180,12 @@
   transition: opacity 200ms ease;
 }
 
+/* Snapping mode 가 활성화된 상태 — 도트에 옅은 강조 (조작 가능 단서) */
+.gaze-dot.snap-active {
+  background: rgba(123, 227, 138, 0.9);
+  box-shadow: 0 0 14px rgba(123, 227, 138, 0.55);
+}
+
 /* Snapping mode 의 lock 진입 순간 — rail 로 흡수되는 220ms transition */
 .gaze-dot.snapping-in {
   transition:

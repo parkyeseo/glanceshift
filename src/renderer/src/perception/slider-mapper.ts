@@ -54,23 +54,3 @@ export function rollToValue(roll: number, cfg: SliderMapperConfig = DEFAULT_SLID
 export function valueToPercent(value: number): number {
   return Math.round(value * 100)
 }
-
-/**
- * 의도/자연 구분 — 머리 회전 속도 기반 heuristic.
- * 둘러보기 (yaw 큼) 와 의도적 갸웃 (roll 변화 + yaw 작음) 을 분리.
- * 현재 값 외에 이전 sample 의 (roll, yaw, t) 가 필요.
- */
-export function isIntentionalTilt(
-  prev: { roll: number; yaw: number; t: number } | null,
-  curr: { roll: number; yaw: number; t: number },
-  cfg: SliderMapperConfig = DEFAULT_SLIDER_CONFIG
-): boolean {
-  if (!prev) return false
-  const dt = (curr.t - prev.t) / 1000
-  if (dt <= 0) return false
-  const dRoll = Math.abs(curr.roll - prev.roll) / dt
-  const dYaw = Math.abs(curr.yaw - prev.yaw) / dt
-  if (cfg.intentRollRate && cfg.intentRollRate > 0 && dRoll < cfg.intentRollRate) return false
-  if (cfg.noIntentYawRate && dYaw > cfg.noIntentYawRate) return false
-  return true
-}

@@ -17,6 +17,7 @@
  * 실제 사용자에게 보일 GazeBar UI 는 Phase 4 에서 구현.
  */
 
+import { memo } from 'react'
 import type { EdgeSnapshot, Edge } from '../perception/edge-detector'
 
 type Props = {
@@ -33,7 +34,7 @@ type Props = {
   visible: boolean
 }
 
-export function EdgeZones({
+function EdgeZonesImpl({
   enterFrac,
   intentZoneFrac,
   lockZoneFrac,
@@ -59,6 +60,8 @@ export function EdgeZones({
 
   return <ClassicZones enterFrac={enterFrac} viewport={viewport} snapshot={snapshot} />
 }
+
+export const EdgeZones = memo(EdgeZonesImpl)
 
 // ============================================================
 // Classic (filtered / raw) — narrow enter band 만 표시
