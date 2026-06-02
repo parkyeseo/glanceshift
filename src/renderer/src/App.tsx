@@ -28,7 +28,7 @@ import {
 } from './perception/face-landmarker'
 import { EdgeDetector, type Edge, type EdgeSnapshot } from './perception/edge-detector'
 import { DEFAULT_SNAP_CONFIG } from './perception/intent-score'
-import { SliderIntentMapper } from './perception/slider-mapper'
+import { SliderIntentMapper, DEFAULT_SLIDER_CONFIG } from './perception/slider-mapper'
 
 // GazeBar 의 후보 항목. Phase 5 에서 머리 기울임으로 볼륨·밝기 slider 연결.
 const GAZEBAR_ITEMS: GazeBarItem[] = [
@@ -68,9 +68,12 @@ const SELECT_DWELL_MS = 1000
  *   - 시선 zone 밖  + upright 가 RELEASE_GAZE_OUT_MS 지속 → 해제
  *   - 시선 zone 안  + upright 가 RELEASE_GAZE_IN_MS  지속 → 해제 (오래 안 만지면)
  *
+ * UPRIGHT_MAX_DEG 는 조이스틱 ramp 의 조작 인식 기준(SliderIntentMapper.uprightMaxDeg)과
+ * **동일한 값을 공유**한다 — "꼿꼿하면 조작 안 함" 기준을 ramp/이탈 양쪽에서 일치시킴.
+ *
  * (plans/2026-06-02-1518-engagement-and-dynamic-zone.md — 활동 기준 재정의)
  */
-const UPRIGHT_MAX_DEG = 6
+const UPRIGHT_MAX_DEG = DEFAULT_SLIDER_CONFIG.uprightMaxDeg
 const RELEASE_GAZE_OUT_MS = 1200
 const RELEASE_GAZE_IN_MS = 3000
 

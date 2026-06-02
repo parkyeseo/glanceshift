@@ -43,6 +43,15 @@
 - DebugHud `engage` 행: `operating` / `upright · NNN/threshold ms`.
 - `UPRIGHT_MAX_DEG` 는 HUD roll 값 보고 튜닝(바이어스 흡수).
 
+## 추가 수정 — ramp 기준을 이탈 체크와 통일 (절대 upright)
+
+ramp(값 조작)는 engage 시점 캡처 neutral 기준, 이탈 체크는 절대 upright 기준이라 두 head-tilt
+인식 기준이 어긋남. 둘 다 **절대 upright** 로 통일:
+- `slider-mapper.ts`: `neutralRoll` 캡처 제거, ramp 가 절대 roll 사용. `neutralDeadzoneDeg`
+  → `uprightMaxDeg`. `|roll| <= uprightMaxDeg` 면 정지, 벗어나면 그 방향(오른쪽=증가)으로 ramp.
+- `App.tsx`: `UPRIGHT_MAX_DEG = DEFAULT_SLIDER_CONFIG.uprightMaxDeg` 로 단일 출처 공유.
+- 결과: "꼿꼿하면 조작 안 함" 경계를 ramp/이탈 양쪽에서 동일(6°)하게 사용.
+
 ## 후속
 
 - Phase 2: B-1 동적 hold zone(active 시 유한 확장) → 통합 모델.
