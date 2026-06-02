@@ -32,7 +32,7 @@ import {
   type EdgeSnapshot,
   type ModeLabel
 } from './perception/edge-detector'
-import { rollToValue, DEFAULT_SLIDER_CONFIG } from './perception/slider-mapper'
+import { SliderIntentMapper } from './perception/slider-mapper'
 
 // GazeBar 의 후보 항목. Phase 5 에서 머리 기울임으로 볼륨·밝기 slider 연결.
 const GAZEBAR_ITEMS: GazeBarItem[] = [
@@ -477,7 +477,15 @@ export function App(): JSX.Element {
 
   // 8) Slider engagement — selectedControlId 가 latch 되어 있는 동안 시선과 무관하게
   //    head roll 로 그 control 의 값을 조절. SELECT_DWELL_MS dwell → select 의 결과로만 켜짐.
+  //    의도 판별: yaw 로 둘러보는 동안엔 roll 입력을 무시(hold) — SliderIntentMapper 담당.
   const engaged = selectedControlId != null && head.detected
+  const sliderMapperRef = useRef(new SliderIntentMapper())
+
+  // 새 control 로 선택이 바뀌면 매퍼 상태 리셋 — 이전 control 의 yaw 속도/hold 값 잔류 방지.
+  // (engagement effect 보다 먼저 선언해 같은 render 에서 reset 이 먼저 실행되도록 함)
+  useEffect(() => {
+    sliderMapperRef.current.reset()
+  }, [selectedControlId])
 
   useEffect(() => {
     if (!engaged || selectedControlId == null) {
@@ -485,7 +493,8 @@ export function App(): JSX.Element {
       return
     }
 
-    const v = rollToValue(head.fRoll, DEFAULT_SLIDER_CONFIG)
+    const sampleT = head.t || performance.now()
+    const { value: v } = sliderMapperRef.current.update(head.fRoll, head.fYaw, sampleT)
     setLiveSliderValue(v)
     lastLiveRef.current = v
 
@@ -503,7 +512,7 @@ export function App(): JSX.Element {
         window.glanceshift.setBrightness(v)
       }
     }
-  }, [engaged, head.fRoll, selectedControlId])
+  }, [engaged, head.t, head.fRoll, head.fYaw, selectedControlId])
 
   // 9) Commit on selection change — selectedControlId 가 다른 항목/null 로 변하면
   //    직전 항목의 마지막 live 값을 OS 에 한 번 더 push (throttle 누락 방지) + sliderValues 저장.
