@@ -22,6 +22,8 @@ type Props = {
   gazeBarHover?: string | null
   liveSliderValue?: number | null
   sliderValues?: Record<string, number>
+  /** 조이스틱 적분 상태 — engage 중에만 (rate: value/s, active: 적분 중) */
+  sliderDebug?: { rate: number; active: boolean; yawRate: number } | null
 }
 
 function fmtDeg(v: number): string {
@@ -48,7 +50,8 @@ function DebugHudImpl({
   edge,
   gazeBarHover,
   liveSliderValue,
-  sliderValues
+  sliderValues,
+  sliderDebug
 }: Props): JSX.Element {
   // 영역 분류 미리보기 (Phase 3 edge-detector 의 placeholder)
   const edgeFrac = 0.08
@@ -284,6 +287,34 @@ function DebugHudImpl({
               <span className="value">{(v * 100).toFixed(0)}%</span>
             </div>
           ))}
+        </>
+      )}
+
+      {sliderDebug && (
+        <>
+          <div className="hud-sep" />
+          <div className="row">
+            <span className="label">joystick</span>
+            <span
+              className="value"
+              style={{ color: sliderDebug.active ? '#7be38a' : 'rgba(255,255,255,0.4)' }}
+            >
+              {sliderDebug.active ? 'active' : 'idle'}
+            </span>
+          </div>
+          <div className="row">
+            <span className="label">rate</span>
+            <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {sliderDebug.rate >= 0 ? '+' : ''}
+              {(sliderDebug.rate * 100).toFixed(0)} %/s
+            </span>
+          </div>
+          <div className="row">
+            <span className="label">yaw rate</span>
+            <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {sliderDebug.yawRate.toFixed(0)} °/s
+            </span>
+          </div>
         </>
       )}
 

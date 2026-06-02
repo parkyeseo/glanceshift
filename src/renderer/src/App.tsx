@@ -121,6 +121,12 @@ export function App(): JSX.Element {
 
   // 현재 hover/active 항목의 *live* 값 — head roll 로 매 프레임 계산
   const [liveSliderValue, setLiveSliderValue] = useState<number | null>(null)
+  // 조이스틱 디버그 — engage 중에만 채워짐 (DebugHud 표시용)
+  const [sliderDebug, setSliderDebug] = useState<{
+    rate: number
+    active: boolean
+    yawRate: number
+  } | null>(null)
 
   // commit 추적 — hover 가 아니라 activeControl 변화 시 마지막 값을 OS 에 한 번 더 push
   const prevActiveRef = useRef<string | null>(null)
@@ -453,12 +459,18 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (!engaged || selectedControlId == null) {
       setLiveSliderValue(null)
+      setSliderDebug(null)
       return
     }
 
     const sampleT = head.t || performance.now()
-    const { value: v } = sliderMapperRef.current.update(head.fRoll, head.fYaw, sampleT)
+    const { value: v, rate, active, yawRate } = sliderMapperRef.current.update(
+      head.fRoll,
+      head.fYaw,
+      sampleT
+    )
     setLiveSliderValue(v)
+    setSliderDebug({ rate, active, yawRate })
     lastLiveRef.current = v
 
     // OS bridge throttled push — 100ms 마다 최대 1회.
@@ -567,6 +579,7 @@ export function App(): JSX.Element {
           gazeBarHover={gazeBarHoverId}
           liveSliderValue={liveSliderValue}
           sliderValues={sliderValues}
+          sliderDebug={sliderDebug}
         />
       )}
 
