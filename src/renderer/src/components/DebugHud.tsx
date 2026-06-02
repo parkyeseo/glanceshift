@@ -24,6 +24,8 @@ type Props = {
   sliderValues?: Record<string, number>
   /** 조이스틱 적분 상태 — engage 중에만 (rate: value/s, active: 적분 중) */
   sliderDebug?: { rate: number; active: boolean; yawRate: number } | null
+  /** engagement 유지/이탈 상태 — select 중에만 (reason: 유지 사유, idleMs: 비활동 누적) */
+  engageDebug?: { reason: 'active' | 'zone' | 'idle'; idleMs: number } | null
 }
 
 function fmtDeg(v: number): string {
@@ -51,7 +53,8 @@ function DebugHudImpl({
   gazeBarHover,
   liveSliderValue,
   sliderValues,
-  sliderDebug
+  sliderDebug,
+  engageDebug
 }: Props): JSX.Element {
   // 영역 분류 미리보기 (Phase 3 edge-detector 의 placeholder)
   const edgeFrac = 0.08
@@ -316,6 +319,27 @@ function DebugHudImpl({
             </span>
           </div>
         </>
+      )}
+
+      {engageDebug && (
+        <div className="row">
+          <span className="label">engage</span>
+          <span
+            className="value"
+            style={{
+              color:
+                engageDebug.reason === 'idle'
+                  ? '#ffb084'
+                  : engageDebug.reason === 'active'
+                    ? '#7be38a'
+                    : '#5aa9ff',
+              fontVariantNumeric: 'tabular-nums'
+            }}
+          >
+            {engageDebug.reason}
+            {engageDebug.reason === 'idle' ? ` · ${engageDebug.idleMs.toFixed(0)}ms` : ''}
+          </span>
+        </div>
       )}
 
       <div className="row">

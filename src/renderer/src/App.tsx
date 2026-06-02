@@ -7,8 +7,9 @@
  *
  * 핵심 책임:
  *   · gaze/head/edge state 를 컴포넌트 트리로 prop 전달
- *   · EdgeDetector 3-mode (filtered / raw / snapping) 갱신 (sample useEffect + RAF tick)
- *   · activeControl latch (LATCH_MS) — 시선이 중앙으로 가도 head tilt 로 계속 조절 가능
+ *   · EdgeDetector (snapping rail FSM) 갱신 (sample useEffect + RAF tick)
+ *   · 활동 기반 engagement — 조작 중(head-tilt active)이거나 시선이 zone 안인 동안 유지,
+ *     둘 다 없으면 IDLE_RELEASE_MS 후 해제 (이탈 판단)
  *   · OS bridge (volume/brightness) throttled push + commit on release
  */
 
@@ -57,11 +58,13 @@ const ZERO_HEAD: HeadSample = {
 const SELECT_DWELL_MS = 1000
 
 /**
- * 선택된 control 의 조작 권한 유지 시간 (ms).
- * 이 동안 시선이 항목을 벗어나도 head tilt 로 계속 값을 조절할 수 있다. 다른 항목에
- * SELECT_DWELL_MS 동안 dwell 하면 새 항목으로 선택이 전환되고 타이머가 재시작된다.
+ * 조작 이탈 판단 — idle grace (ms).
+ * 선택(engage) 후 고정 시간으로 끊지 않는다. 대신 "조작 중(head-tilt active)" 이거나
+ * "시선이 가장자리 zone 안(rail entered)" 인 동안은 무한히 유지하고, 둘 다 아닌 상태가
+ * 이 시간(IDLE_RELEASE_MS) 동안 지속될 때만 해제한다 (= 사용자가 조작에서 이탈).
+ * (이전의 고정 LATCH_MS 3초 타임아웃을 대체. plans/2026-06-02-1518-engagement-and-dynamic-zone.md Phase 1)
  */
-const LATCH_MS = 3000
+const IDLE_RELEASE_MS = 1200
 
 export function App(): JSX.Element {
   const [debugVisible, setDebugVisible] = useState(true)
@@ -100,10 +103,11 @@ export function App(): JSX.Element {
 
   const [gazeBarHoverId, setGazeBarHoverId] = useState<string | null>(null)
 
-  // ===== Dwell-to-select + Latch =====
+  // ===== Dwell-to-select + Activity-based engagement =====
   // 1) hover → 같은 항목 위 SELECT_DWELL_MS 동안 시선 유지 시 selectedControlId 로 commit
-  // 2) selected 상태에서 LATCH_MS 동안 head tilt 로 조작 가능 (시선이 어디 있든)
-  // 3) selected 중에도 다른 항목에 다시 SELECT_DWELL_MS dwell 하면 새 선택으로 전환 (latch 재시작)
+  // 2) selected 후에는 "조작 중(head-tilt active)" 이거나 "시선이 zone 안(rail entered)" 인 동안
+  //    무한히 유지. 둘 다 아닌 상태가 IDLE_RELEASE_MS 지속될 때만 해제 (이탈 판단).
+  // 3) selected 중에도 다른 항목에 다시 SELECT_DWELL_MS dwell 하면 새 선택으로 전환.
   //
   // 짧은 hover 는 "탐색", 1초 dwell 은 "선택 의도" 로 해석한다.
   const [selectedControlId, setSelectedControlId] = useState<string | null>(null)
@@ -111,7 +115,8 @@ export function App(): JSX.Element {
   const [dwellProgress, setDwellProgress] = useState<{ itemId: string; progress: number } | null>(null)
   /** 현재 dwell 누적 중인 hover 시작 정보. progress 는 setInterval 로 계산. */
   const hoverDwellRef = useRef<{ itemId: string; startedAt: number } | null>(null)
-  const latchTimerRef = useRef<number | null>(null)
+  /** 마지막으로 engagement 이 "살아있던"(active 조작 or rail entered) 시각 (ms). idle 해제 판단용. */
+  const lastEngageActivityRef = useRef(0)
 
   // 항목별 저장된 슬라이더 값 (commit 된 값) — OS bridge 가 이걸 읽어 적용
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({
@@ -397,37 +402,19 @@ export function App(): JSX.Element {
       setDwellProgress({ itemId: dwell.itemId, progress })
 
       if (progress >= 1) {
-        // commit
+        // commit — engagement 시작. 해제는 활동 기반 idle 모니터가 담당(고정 타이머 없음).
         const commitId = dwell.itemId
         hoverDwellRef.current = null
         setDwellProgress(null)
+        lastEngageActivityRef.current = performance.now()
         setSelectedControlId(commitId)
-
-        // latch 타이머 재시작 — 기존 타이머 있으면 cancel
-        if (latchTimerRef.current != null) {
-          window.clearTimeout(latchTimerRef.current)
-        }
-        latchTimerRef.current = window.setTimeout(() => {
-          setSelectedControlId((c) => (c === commitId ? null : c))
-          latchTimerRef.current = null
-        }, LATCH_MS)
       }
     }, 50)
     return () => window.clearInterval(intervalId)
   }, [gazeBarHoverId])
 
-  // unmount 시 latch timer 정리
-  useEffect(() => {
-    return () => {
-      if (latchTimerRef.current != null) {
-        window.clearTimeout(latchTimerRef.current)
-        latchTimerRef.current = null
-      }
-    }
-  }, [])
-
   // gazeBarEdge — entered 상태이면 현재 edge, 그 외엔 selectedControlId 가 살아있는 동안
-  // 마지막 entered edge 로 fallback. 시선이 중앙으로 돌아가도 latch (LATCH_MS) 동안 UI 유지.
+  // 마지막 entered edge 로 fallback. 시선이 중앙으로 돌아가도 engagement 유지 동안 UI 유지.
   const gazeBarEdge: Edge | null =
     edgeSnapshot.state === 'entered' && edgeSnapshot.edge
       ? edgeSnapshot.edge
@@ -488,6 +475,41 @@ export function App(): JSX.Element {
       }
     }
   }, [engaged, head.t, head.fRoll, head.fYaw, selectedControlId])
+
+  // 8b) Engagement idle 모니터 — "조작 중(active)" 또는 "시선 zone 안(rail entered)" 이
+  //     IDLE_RELEASE_MS 동안 모두 없으면 해제(이탈). 고정 타이머가 아니라 활동 기반.
+  //     interval 안에서 최신 값을 읽도록 ref 로 미러.
+  const edgeStateRef = useRef(edgeSnapshot.state)
+  edgeStateRef.current = edgeSnapshot.state
+  const tiltActiveRef = useRef(false)
+  tiltActiveRef.current = sliderDebug?.active ?? false
+  const [engageDebug, setEngageDebug] = useState<{
+    reason: 'active' | 'zone' | 'idle'
+    idleMs: number
+  } | null>(null)
+
+  useEffect(() => {
+    if (selectedControlId == null) {
+      setEngageDebug(null)
+      return
+    }
+    const id = window.setInterval(() => {
+      const now = performance.now()
+      const inZone = edgeStateRef.current === 'entered'
+      const active = tiltActiveRef.current
+      if (active || inZone) {
+        lastEngageActivityRef.current = now
+        setEngageDebug({ reason: active ? 'active' : 'zone', idleMs: 0 })
+        return
+      }
+      const idleMs = now - lastEngageActivityRef.current
+      setEngageDebug({ reason: 'idle', idleMs })
+      if (idleMs > IDLE_RELEASE_MS) {
+        setSelectedControlId(null)
+      }
+    }, 150)
+    return () => window.clearInterval(id)
+  }, [selectedControlId])
 
   // 9) Commit on selection change — selectedControlId 가 다른 항목/null 로 변하면
   //    직전 항목의 마지막 live 값을 OS 에 한 번 더 push (throttle 누락 방지) + sliderValues 저장.
@@ -580,6 +602,7 @@ export function App(): JSX.Element {
           liveSliderValue={liveSliderValue}
           sliderValues={sliderValues}
           sliderDebug={sliderDebug}
+          engageDebug={engageDebug}
         />
       )}
 
