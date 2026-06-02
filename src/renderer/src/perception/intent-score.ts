@@ -23,8 +23,15 @@ export type Edge = 'left' | 'right' | 'top' | 'bottom'
 export interface SnapConfig {
   /** Intent zone — viewport 짧은 변 길이의 비율 (예: 0.30 = outer 30%) */
   intentZoneFrac: number
-  /** Lock zone — intent zone 보다 약간 넓음. lock 유지에 사용 (hysteresis) */
+  /** Lock zone (base) — intent zone 보다 약간 넓음. lock 유지에 사용 (hysteresis) */
   lockZoneFrac: number
+  /**
+   * 조작 중(head-tilt operating)일 때로 확장되는 lock zone 비율 (B-1, Phase 2).
+   * 조작 중에는 시선이 결과를 보러 떠나도 rail 이 풀리지 않도록 hold zone 을 넓힌다.
+   */
+  lockZoneFracActive: number
+  /** 조작 종료(operating→idle) 시 lock zone 이 base 로 수축하는 시상수(ms). 확장은 즉시. */
+  holdZoneDecayMs: number
   /** Score 임계값 (ms-equivalent unit). 도달 시 rail lock */
   intentThreshold: number
   /** Score cap. 누적 폭주 방지 */
@@ -51,6 +58,8 @@ export const DEFAULT_SNAP_CONFIG: SnapConfig = {
   //       lockZone 은 6% 더 넓혀 hysteresis 보존.
   intentZoneFrac: 0.18,
   lockZoneFrac: 0.24,
+  lockZoneFracActive: 0.55, // 조작 중 확장 (Phase 2 B-1)
+  holdZoneDecayMs: 400,
   intentThreshold: 150, // ms-equivalent
   scoreMax: 250,
   decayPerMs: 0.5,

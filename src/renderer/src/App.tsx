@@ -108,6 +108,12 @@ export function App(): JSX.Element {
   // intent score 의 시간 적분이 약간 왜곡될 수 있다. 8ms 내 호출은 skip.
   const lastEdgeUpdateAtRef = useRef(0)
 
+  // "조작 중(operating)" = 얼굴 검출 + 머리가 upright 범위를 벗어나 기울어짐 (절대 roll 기준).
+  // edge-detector(hold zone 확장, Phase 2)와 engagement 이탈 판정(§8b)이 공유하는 단일 신호.
+  // ref 로 미러 — effect 안에서 deps 없이 최신값을 읽는다.
+  const operatingRef = useRef(false)
+  operatingRef.current = head.detected && Math.abs(head.fRoll) > UPRIGHT_MAX_DEG
+
   // Snap-in animation 표시 (lock 진입 직후 200ms 동안 GazeDot 의 강한 transition)
   const [snapAnimating, setSnapAnimating] = useState(false)
   const snapAnimTimerRef = useRef<number | null>(null)
@@ -271,7 +277,8 @@ export function App(): JSX.Element {
     const evt = edgeDetectorRef.current.update(
       { x: point.x, y: point.y },
       viewport,
-      now
+      now,
+      operatingRef.current
     )
     lastEdgeUpdateAtRef.current = now
 
@@ -311,8 +318,8 @@ export function App(): JSX.Element {
         // null/음수 좌표를 받으면 모든 edge score 를 decay 시킨다.
         const validPoint = point.x >= 0 && point.y >= 0
         const evt = validPoint
-          ? edgeDetectorRef.current.update({ x: point.x, y: point.y }, viewport, now)
-          : edgeDetectorRef.current.update({ x: -1, y: -1 }, viewport, now)
+          ? edgeDetectorRef.current.update({ x: point.x, y: point.y }, viewport, now, operatingRef.current)
+          : edgeDetectorRef.current.update({ x: -1, y: -1 }, viewport, now, operatingRef.current)
         lastEdgeUpdateAtRef.current = now
 
         if (evt) {
@@ -489,10 +496,6 @@ export function App(): JSX.Element {
   //     interval 안에서 최신 값을 읽도록 ref 로 미러.
   const edgeStateRef = useRef(edgeSnapshot.state)
   edgeStateRef.current = edgeSnapshot.state
-  const headRollRef = useRef(0)
-  headRollRef.current = head.fRoll
-  const headDetectedRef = useRef(false)
-  headDetectedRef.current = head.detected
   /** 머리가 upright 상태로 들어선 시각(ms). null = 지금 기울이고 있음(조작 중). */
   const uprightSinceRef = useRef<number | null>(null)
   const [engageDebug, setEngageDebug] = useState<{
@@ -510,9 +513,7 @@ export function App(): JSX.Element {
     const id = window.setInterval(() => {
       const now = performance.now()
       const inZone = edgeStateRef.current === 'entered'
-      // 조작 중 = 얼굴 검출 + 머리가 upright 범위를 벗어나 기울어짐 (절대 roll 기준).
-      const operating =
-        headDetectedRef.current && Math.abs(headRollRef.current) > UPRIGHT_MAX_DEG
+      const operating = operatingRef.current
       const thresholdMs = inZone ? RELEASE_GAZE_IN_MS : RELEASE_GAZE_OUT_MS
 
       if (operating) {

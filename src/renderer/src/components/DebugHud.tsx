@@ -248,6 +248,12 @@ function DebugHudImpl({
                     : '—'}
                 </span>
               </div>
+              <div className="row">
+                <span className="label">hold zone</span>
+                <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {(edge.lockZoneFrac * 100).toFixed(0)}%
+                </span>
+              </div>
             </>
           )}
           {edge.state === 'dwelling' && (

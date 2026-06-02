@@ -1,7 +1,7 @@
 # Engagement(조작 유지/이탈) 재설계 + 동적 enter/exit Zone
 
-> **Status**: Phase 1 구현 완료 (2026-06-02). Phase 2/3 대기.
-> 결정: 범위=Phase 1만 먼저 · active 중 hold=유한 확장(Phase 2) · idle grace=1200ms.
+> **Status**: Phase 1 + Phase 2 구현 완료 (2026-06-02). Phase 3 대기(선택).
+> 결정: active 중 hold=유한 확장 · idle grace=1200ms · upright 기준 통일(6°).
 > **관련 코드**: `App.tsx`(latch/engagement), `perception/edge-detector.ts`(rail lock),
 > `perception/intent-score.ts`(zone/score), `perception/slider-mapper.ts`(tilt active).
 > 권위 있는 현재 상태: [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
@@ -176,7 +176,13 @@ release:  위 모두 거짓이 idleReleaseMs 동안 지속 → 해제 + commit
   - `App.tsx`: `LATCH_MS`/`latchTimerRef` 제거 → `IDLE_RELEASE_MS=1200` + 활동 기반 idle 모니터
     (interval). 유지 조건 = `edgeSnapshot.state==='entered'`(zone) OR `sliderDebug.active`(tilt).
   - DebugHud: `engage` 행(reason active/zone/idle + idle ms) 추가.
-- **Phase 2** — B-1(동적 hold zone, active 시 **유한 확장**) 적용 → 통합 모델 (a)로 수렴.
+- **Phase 2** ✅ (2026-06-02) — B-1(동적 hold zone, operating 시 유한 확장).
+  - `SnapConfig`: `lockZoneFracActive`(0.55) + `holdZoneDecayMs`(400) 추가.
+  - `EdgeDetector`: 동적 `holdFrac` (operating 시 즉시 확장, idle 시 시상수로 수축),
+    `update(point, vp, now, operating)` 시그니처, `inLockZone` 이 holdFrac 사용,
+    snapshot.lockZoneFrac 를 동적값으로 노출(EdgeZones/HUD 시각화).
+  - `App`: `operatingRef`(=upright 벗어남) 단일 신호로 edge-detector hint + 이탈 판정 공유.
+  - DebugHud: `hold zone` 행 추가.
 - **Phase 3** — (선택) B-2(정확도 적응) / B-3(속도 적응 enter). 보고서 §4.5 정량화.
 
 각 Phase 끝에 typecheck/build + 수동 시나리오 통과, DebugHud 로 신호 확인.

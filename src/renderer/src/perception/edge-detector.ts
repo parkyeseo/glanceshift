@@ -62,9 +62,12 @@ export class EdgeDetector {
   private lastNow: number | null = null
   private intentTracker: IntentTracker
   private lastIntentSample: IntentSample | null = null
+  /** 현재 동적 hold zone 비율 (B-1) — operating 시 확장, idle 시 base 로 수축. */
+  private holdFrac: number
 
   constructor(public config: SnapConfig = DEFAULT_SNAP_CONFIG) {
     this.intentTracker = new IntentTracker(config)
+    this.holdFrac = config.lockZoneFrac
   }
 
   /** config 교체 시 사용 — 상태 리셋 후 새 config 적용. */
@@ -72,6 +75,7 @@ export class EdgeDetector {
     this.config = cfg
     this.reset()
     this.intentTracker = new IntentTracker(cfg)
+    this.holdFrac = cfg.lockZoneFrac
   }
 
   reset(): void {
@@ -83,15 +87,26 @@ export class EdgeDetector {
     this.lastNow = null
     this.lastIntentSample = null
     this.intentTracker.reset()
+    this.holdFrac = this.config.lockZoneFrac
   }
 
   // ============================================================
   // Rail FSM
   // ============================================================
-  update(point: Point, viewport: Viewport, now: number): EdgeEvent | null {
+  // operating: head-tilt 로 값을 조작 중인지 (App 이 전달). true 면 hold zone 확장(B-1).
+  update(point: Point, viewport: Viewport, now: number, operating = false): EdgeEvent | null {
     const cfg = this.config
     const tracker = this.intentTracker
     const dt = this.lastNow != null ? Math.max(0, Math.min(200, now - this.lastNow)) : 0
+
+    // 동적 hold zone — 확장은 즉시, 수축은 holdZoneDecayMs 시상수로 부드럽게.
+    const targetFrac = operating ? cfg.lockZoneFracActive : cfg.lockZoneFrac
+    if (targetFrac >= this.holdFrac) {
+      this.holdFrac = targetFrac
+    } else {
+      const k = cfg.holdZoneDecayMs > 0 ? 1 - Math.exp(-dt / cfg.holdZoneDecayMs) : 1
+      this.holdFrac += (targetFrac - this.holdFrac) * k
+    }
 
     let event: EdgeEvent | null = null
 
@@ -129,7 +144,8 @@ export class EdgeDetector {
 
       case 'rail_locked': {
         // intentTracker 는 lock 중에는 호출 안 함 (계산 낭비). lastIntentSample 도 그대로 유지.
-        if (this.snapCurrentEdge && inLockZone(point, viewport, this.snapCurrentEdge, cfg.lockZoneFrac)) {
+        // hold 판정은 동적 holdFrac 사용 — 조작 중엔 확장된 zone 으로 시선이 떠나도 유지.
+        if (this.snapCurrentEdge && inLockZone(point, viewport, this.snapCurrentEdge, this.holdFrac)) {
           this.snapRailCursor = projectToRail(point, this.snapCurrentEdge, viewport)
           this.snapExitGraceAccum = 0
         } else {
@@ -171,7 +187,7 @@ export class EdgeDetector {
       dwellProgress: progress,
       enteredAt: this.enteredAt,
       intentZoneFrac: cfg.intentZoneFrac,
-      lockZoneFrac: cfg.lockZoneFrac,
+      lockZoneFrac: this.holdFrac, // 동적 (B-1) — EdgeZones/HUD 가 확장/수축을 시각화
       intentThreshold: cfg.intentThreshold,
       railCursor: this.snapRailCursor
     }
