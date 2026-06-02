@@ -435,10 +435,19 @@ export function App(): JSX.Element {
   const engaged = selectedControlId != null && head.detected
   const sliderMapperRef = useRef(new SliderIntentMapper())
 
-  // 새 control 로 선택이 바뀌면 매퍼 상태 리셋 — 이전 control 의 yaw 속도/hold 값 잔류 방지.
+  // 매 render 최신 sliderValues 를 ref 로 미러 — reset effect 가 deps 없이 시작 값을 읽도록.
+  const sliderValuesRef = useRef(sliderValues)
+  sliderValuesRef.current = sliderValues
+
+  // 새 control 로 선택이 바뀌면 매퍼를 그 control 의 현재 값에서부터 시작하도록 리셋.
+  // neutral roll 은 다음 update 의 head roll 로 캡처된다 ("들어간 시점" 머리 위치 = 0).
   // (engagement effect 보다 먼저 선언해 같은 render 에서 reset 이 먼저 실행되도록 함)
   useEffect(() => {
-    sliderMapperRef.current.reset()
+    if (selectedControlId == null) {
+      sliderMapperRef.current.reset()
+      return
+    }
+    sliderMapperRef.current.reset(sliderValuesRef.current[selectedControlId] ?? 0.5)
   }, [selectedControlId])
 
   useEffect(() => {
