@@ -186,7 +186,7 @@ export class EdgeDetector {
       edge: this.snapCurrentEdge,
       dwellProgress: progress,
       enteredAt: this.enteredAt,
-      intentZoneFrac: cfg.intentZoneFrac,
+      intentZoneFrac: this.lastIntentSample?.enterFrac ?? cfg.intentZoneFrac, // 동적 (B-3)
       lockZoneFrac: this.holdFrac, // 동적 (B-1) — EdgeZones/HUD 가 확장/수축을 시각화
       intentThreshold: cfg.intentThreshold,
       railCursor: this.snapRailCursor

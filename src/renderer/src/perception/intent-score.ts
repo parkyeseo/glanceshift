@@ -48,6 +48,16 @@ export interface SnapConfig {
   lateralPenaltyRate: number
   /** Lock 유지 위해 lock zone 밖 머무를 수 있는 grace (ms) */
   exitGraceMs: number
+
+  // ===== B-3 (Phase 3) — enter zone 속도 적응 =====
+  /** 동적 enter zone 하한 (가로로 훑는 중 = lateral 빠를 때 수축) */
+  enterFracMin: number
+  /** 동적 enter zone 상한 (가장자리로 곧장 접근 중 = approach 빠를 때 확장) */
+  enterFracMax: number
+  /** 이 approach 속도(px/s, edge 로 접근)에서 enter zone 이 enterFracMax 에 도달 */
+  enterApproachRefPxs: number
+  /** 이 lateral 속도(px/s)에서 enter zone 이 enterFracMin 으로 수축 */
+  enterLateralRefPxs: number
 }
 
 export const DEFAULT_SNAP_CONFIG: SnapConfig = {
@@ -67,7 +77,12 @@ export const DEFAULT_SNAP_CONFIG: SnapConfig = {
   dwellBonusRate: 0.5,
   lateralVelocityPxs: 500,
   lateralPenaltyRate: 0.8,
-  exitGraceMs: 250
+  exitGraceMs: 250,
+  // B-3 enter 속도 적응 — base intentZoneFrac(0.18) 기준 0.12~0.26 사이 동적.
+  enterFracMin: 0.12,
+  enterFracMax: 0.26,
+  enterApproachRefPxs: 600,
+  enterLateralRefPxs: 500
 }
 
 export interface IntentSample {
@@ -79,6 +94,8 @@ export interface IntentSample {
   lateralVelocity: number
   /** perpendicular velocity (px/s, edge 안쪽 방향 +) — 디버그용 */
   approachVelocity: number
+  /** 이번 프레임 primary edge 에 적용된 동적 enter zone 비율 (B-3) — 디버그/시각화용 */
+  enterFrac: number
 }
 
 type Point = { x: number; y: number }
@@ -145,10 +162,25 @@ export class IntentTracker {
     primary: null,
     zoneDwellMs: 0,
     lateralVelocity: 0,
-    approachVelocity: 0
+    approachVelocity: 0,
+    enterFrac: 0
   }
 
-  constructor(public cfg: SnapConfig = DEFAULT_SNAP_CONFIG) {}
+  constructor(public cfg: SnapConfig = DEFAULT_SNAP_CONFIG) {
+    this.lastSample.enterFrac = cfg.intentZoneFrac
+  }
+
+  /** B-3 — primary edge 의 approach/lateral 속도로 enter zone 비율을 동적 계산. */
+  private dynamicEnterFrac(approachV: number, lateralV: number): number {
+    const base = this.cfg.intentZoneFrac
+    const approachNorm = Math.max(0, Math.min(1, approachV / this.cfg.enterApproachRefPxs))
+    const lateralNorm = Math.max(0, Math.min(1, lateralV / this.cfg.enterLateralRefPxs))
+    // approach 빠르면 enterFracMax 쪽으로 확장, lateral 빠르면 enterFracMin 쪽으로 수축.
+    const widen = approachNorm * (this.cfg.enterFracMax - base)
+    const shrink = lateralNorm * (base - this.cfg.enterFracMin)
+    const frac = base + widen - shrink
+    return Math.max(this.cfg.enterFracMin, Math.min(this.cfg.enterFracMax, frac))
+  }
 
   setConfig(cfg: SnapConfig): void {
     this.cfg = cfg
@@ -171,6 +203,7 @@ export class IntentTracker {
     this.lastSample.zoneDwellMs = 0
     this.lastSample.lateralVelocity = 0
     this.lastSample.approachVelocity = 0
+    this.lastSample.enterFrac = this.cfg.intentZoneFrac
   }
 
   /**
@@ -191,20 +224,16 @@ export class IntentTracker {
       this.zoneDwellMs = 0
       this.currentZoneEdge = null
       this.lastGaze = null
-      this.lastSample = this.buildSample(0, 0)
+      this.lastSample = this.buildSample(0, 0, this.cfg.intentZoneFrac)
       return this.lastSample
     }
 
-    // 1. perpendicular distance 와 zone 내부 여부
+    // 1. perpendicular distance
     const pd: Record<Edge, number> = {
       left: 0, right: 0, top: 0, bottom: 0
     }
-    const inZone: Record<Edge, boolean> = {
-      left: false, right: false, top: false, bottom: false
-    }
     for (const e of EDGES) {
       pd[e] = perpendicularDistance(gaze, vp, e)
-      inZone[e] = pd[e] / vpDim(vp, e) < this.cfg.intentZoneFrac
     }
 
     // 2. 가장 가까운 변 = primary candidate
@@ -216,9 +245,8 @@ export class IntentTracker {
         primaryEdge = e
       }
     }
-    const primaryInZone = inZone[primaryEdge]
 
-    // 3. velocities
+    // 3. velocities (primary 기준)
     let vx = 0
     let vy = 0
     if (this.lastGaze && dt > 0) {
@@ -228,7 +256,11 @@ export class IntentTracker {
     const approachV = approachVelocity(primaryEdge, vx, vy)
     const lateralV = lateralVelocity(primaryEdge, vx, vy)
 
-    // 4. zone dwell 추적
+    // 4. 동적 enter zone (B-3) — 접근/스캔 속도로 진입 범위 조절 후 primary in-zone 판정.
+    const enterFrac = this.dynamicEnterFrac(approachV, lateralV)
+    const primaryInZone = pd[primaryEdge] / vpDim(vp, primaryEdge) < enterFrac
+
+    // 5. zone dwell 추적
     if (primaryInZone && this.currentZoneEdge === primaryEdge) {
       this.zoneDwellMs += dt
     } else if (primaryInZone) {
@@ -239,10 +271,9 @@ export class IntentTracker {
       this.zoneDwellMs = 0
     }
 
-    // 5. primary edge score 갱신
+    // 6. primary edge score 갱신 (closeness 도 동적 enterFrac 기준)
     if (primaryInZone) {
-      const closeness =
-        1 - pd[primaryEdge] / (vpDim(vp, primaryEdge) * this.cfg.intentZoneFrac)
+      const closeness = 1 - pd[primaryEdge] / (vpDim(vp, primaryEdge) * enterFrac)
       const dwellBonus =
         this.zoneDwellMs > this.cfg.dwellBonusAfterMs ? this.cfg.dwellBonusRate : 0
       const lateralPen =
@@ -259,14 +290,14 @@ export class IntentTracker {
       )
     }
 
-    // 6. 다른 edge 의 score 는 모두 감쇠
+    // 7. 다른 edge 의 score 는 모두 감쇠
     for (const e of EDGES) {
       if (e === primaryEdge) continue
       this.scores[e] = Math.max(0, this.scores[e] - dt * this.cfg.decayPerMs)
     }
 
     this.lastGaze = { x: gaze.x, y: gaze.y }
-    this.lastSample = this.buildSample(lateralV, approachV)
+    this.lastSample = this.buildSample(lateralV, approachV, enterFrac)
     return this.lastSample
   }
 
@@ -275,7 +306,7 @@ export class IntentTracker {
    * lastSample / sampleScores 를 in-place 갱신해 매 frame 의 새 객체 할당을 피한다.
    * 외부 호출자는 sample 의 reference 를 들고 있다가 다음 update 후 값이 바뀐 걸 볼 수 있다.
    */
-  private buildSample(lateralV: number, approachV: number): IntentSample {
+  private buildSample(lateralV: number, approachV: number, enterFrac: number): IntentSample {
     // sampleScores 를 현재 scores 로 복사
     this.sampleScores.left = this.scores.left
     this.sampleScores.right = this.scores.right
@@ -294,6 +325,7 @@ export class IntentTracker {
     this.lastSample.zoneDwellMs = this.zoneDwellMs
     this.lastSample.lateralVelocity = lateralV
     this.lastSample.approachVelocity = approachV
+    this.lastSample.enterFrac = enterFrac
     return this.lastSample
   }
 }
