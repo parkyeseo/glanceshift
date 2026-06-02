@@ -95,9 +95,9 @@ export class SliderIntentMapper {
     }
 
     const looking = this.yawRateEma >= this.cfg.lookAroundYawRate
-    // 오른쪽 어깨로 기울이면 roll 이 작아진다(face-landmarker: 왼쪽 기울임 = roll +).
-    // tilt > 0 = 오른쪽 = 값 증가.
-    const tilt = this.neutralRoll - roll
+    // 오른쪽 어깨로 기울임 = 값 증가, 왼쪽 = 감소 (실측 기준 부호).
+    // tilt > 0 = 오른쪽 기울임 = 값 증가.
+    const tilt = roll - this.neutralRoll
     const mag = Math.abs(tilt)
 
     let rate = 0

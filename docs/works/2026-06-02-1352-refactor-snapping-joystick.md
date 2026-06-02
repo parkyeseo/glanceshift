@@ -40,6 +40,11 @@ snapping 을 단일 인터랙션으로 심화. 코드 점검에서 발견한 죽
 - `npm run typecheck` (node+web) 통과, `npm run build` 통과.
 - 모드 1/2 잔존 참조 0건 확인.
 
+## 추가 수정 (실측)
+
+- 조이스틱 좌우 방향이 반대로 동작 → `slider-mapper.ts` 의 `tilt` 부호 수정
+  (`neutralRoll - roll` → `roll - neutralRoll`). 오른쪽=증가/왼쪽=감소로 정상화.
+
 ## 후속 / 열린 항목
 
 - 조이스틱 파라미터 실측 튜닝(`DEFAULT_SLIDER_CONFIG`): neutral bias·속도·yaw 게이트 임계.
