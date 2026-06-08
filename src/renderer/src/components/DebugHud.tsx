@@ -19,11 +19,13 @@ type Props = {
   headError?: string | null
   head?: HeadSample
   edge?: EdgeSnapshot
-  /** 현재 mode label — edge?.modeLabel 과 동일하지만 edge 가 없어도 표시 가능하도록. */
-  edgeMode?: string
   gazeBarHover?: string | null
   liveSliderValue?: number | null
   sliderValues?: Record<string, number>
+  /** 조이스틱 적분 상태 — engage 중에만 (rate: value/s, active: 적분 중) */
+  sliderDebug?: { rate: number; active: boolean; yawRate: number } | null
+  /** engagement 유지/이탈 상태 — select 중에만 (operating: 머리 기울임=조작중, uprightMs/thresholdMs: 해제 카운트) */
+  engageDebug?: { operating: boolean; uprightMs: number; thresholdMs: number } | null
 }
 
 function fmtDeg(v: number): string {
@@ -48,13 +50,12 @@ function DebugHudImpl({
   headError,
   head,
   edge,
-  edgeMode,
   gazeBarHover,
   liveSliderValue,
-  sliderValues
+  sliderValues,
+  sliderDebug,
+  engageDebug
 }: Props): JSX.Element {
-  // edge snapshot 이 없을 때도 mode 라벨은 노출 — 디버그 시 어떤 mode 인지 항상 확인 가능.
-  const displayMode = edge?.modeLabel ?? edgeMode
   // 영역 분류 미리보기 (Phase 3 edge-detector 의 placeholder)
   const edgeFrac = 0.08
   const xFrac = point.x / viewport.w
@@ -183,29 +184,9 @@ function DebugHudImpl({
         </>
       )}
 
-      {displayMode && (
-        <>
-          <div className="hud-sep" />
-          <div className="row">
-            <span className="label">edge mode</span>
-            <span
-              className="value"
-              style={{
-                color:
-                  displayMode === 'filtered'
-                    ? 'rgba(255,255,255,0.7)'
-                    : displayMode === 'raw'
-                      ? '#ffb084'
-                      : '#7be38a'
-              }}
-            >
-              {displayMode}
-            </span>
-          </div>
-        </>
-      )}
       {edge && (
         <>
+          <div className="hud-sep" />
           <div className="row">
             <span className="label">edge state</span>
             <span
@@ -223,7 +204,7 @@ function DebugHudImpl({
               {edge.edge ? ` · ${edge.edge}` : ''}
             </span>
           </div>
-          {edge.modeLabel === 'snapping' && edge.scores ? (
+          {edge.scores && (
             <div className="row">
               <span className="label">scores L/R/T/B</span>
               <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -231,16 +212,8 @@ function DebugHudImpl({
                 {edge.scores.top.toFixed(0)} {edge.scores.bottom.toFixed(0)}
               </span>
             </div>
-          ) : edge.scores ? (
-            <div className="row">
-              <span className="label">scores L/R/T/B</span>
-              <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {edge.scores.left.toFixed(2)} {edge.scores.right.toFixed(2)}{' '}
-                {edge.scores.top.toFixed(2)} {edge.scores.bottom.toFixed(2)}
-              </span>
-            </div>
-          ) : null}
-          {edge.modeLabel === 'snapping' && edge.intentThreshold != null && (
+          )}
+          {edge.intentThreshold != null && (
             <>
               <div className="row">
                 <span className="label">intent score</span>
@@ -273,6 +246,18 @@ function DebugHudImpl({
                   {edge.railCursor
                     ? `(${edge.railCursor.x.toFixed(0)}, ${edge.railCursor.y.toFixed(0)})`
                     : '—'}
+                </span>
+              </div>
+              <div className="row">
+                <span className="label">enter zone</span>
+                <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {((edge.intentZoneFrac ?? 0) * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="row">
+                <span className="label">hold zone</span>
+                <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {(edge.lockZoneFrac * 100).toFixed(0)}%
                 </span>
               </div>
             </>
@@ -320,12 +305,57 @@ function DebugHudImpl({
         </>
       )}
 
+      {sliderDebug && (
+        <>
+          <div className="hud-sep" />
+          <div className="row">
+            <span className="label">joystick</span>
+            <span
+              className="value"
+              style={{ color: sliderDebug.active ? '#7be38a' : 'rgba(255,255,255,0.4)' }}
+            >
+              {sliderDebug.active ? 'active' : 'idle'}
+            </span>
+          </div>
+          <div className="row">
+            <span className="label">rate</span>
+            <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {sliderDebug.rate >= 0 ? '+' : ''}
+              {(sliderDebug.rate * 100).toFixed(0)} %/s
+            </span>
+          </div>
+          <div className="row">
+            <span className="label">yaw rate</span>
+            <span className="value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {sliderDebug.yawRate.toFixed(0)} °/s
+            </span>
+          </div>
+        </>
+      )}
+
+      {engageDebug && (
+        <div className="row">
+          <span className="label">engage</span>
+          <span
+            className="value"
+            style={{
+              color: engageDebug.operating ? '#7be38a' : '#ffb084',
+              fontVariantNumeric: 'tabular-nums'
+            }}
+          >
+            {engageDebug.operating
+              ? 'operating'
+              : `upright · ${engageDebug.uprightMs.toFixed(0)}/${engageDebug.thresholdMs}ms`}
+          </span>
+        </div>
+      )}
+
       <div className="row">
         <span className="label">FSM state</span>
         <span className="value" style={{ color: 'rgba(255,255,255,0.4)' }}>idle (Phase 6)</span>
       </div>
       <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-        ⌘⇧D HUD · ⌘⇧M click · ⌘⇧K calib · ⌘⇧E eval · ⌘⇧1/2/3 filtered/raw/snapping · ⌘⇧Q quit
+        ⌘⇧D HUD · ⌘⇧M click · ⌘⇧K calib · ⌘⇧E eval · ⌘⇧Q quit
       </div>
     </div>
   )
