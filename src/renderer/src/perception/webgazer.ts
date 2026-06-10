@@ -69,6 +69,92 @@ function waitForWebGazer(timeoutMs = 8000): Promise<WebGazerAPI> {
 const STALE_MS = 200
 const WATCHDOG_TICK_MS = 100
 
+function mediaErrorName(error: unknown): string {
+  if (error instanceof DOMException) return error.name
+  if (error instanceof Error && error.name) return error.name
+  return 'UnknownError'
+}
+
+function mediaErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  return String(error)
+}
+
+const VIRTUAL_CAMERA_RE = /\b(obs|virtual|ndi|snap|droidcam|manycam|xsplit)\b/i
+let lastChosenCameraLabel: string | null = null
+
+function baseVideoConstraints(): MediaTrackConstraints {
+  return {
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: 30, max: 30 }
+  }
+}
+
+async function chooseCameraConstraints(): Promise<MediaStreamConstraints> {
+  lastChosenCameraLabel = null
+  const fallback: MediaStreamConstraints = {
+    video: {
+      ...baseVideoConstraints(),
+      facingMode: 'user'
+    },
+    audio: false
+  }
+
+  try {
+    if (!navigator.mediaDevices?.enumerateDevices) return fallback
+    const videoInputs = (await navigator.mediaDevices.enumerateDevices())
+      .filter((device) => device.kind === 'videoinput')
+
+    const selected =
+      videoInputs.find((device) => device.label && !VIRTUAL_CAMERA_RE.test(device.label)) ??
+      videoInputs[0]
+
+    if (!selected?.deviceId) return fallback
+    lastChosenCameraLabel = selected.label || 'unlabeled camera'
+
+    return {
+      video: {
+        ...baseVideoConstraints(),
+        deviceId: { exact: selected.deviceId }
+      },
+      audio: false
+    }
+  } catch {
+    lastChosenCameraLabel = null
+    return fallback
+  }
+}
+
+async function describeCameraFailure(error: unknown): Promise<string> {
+  const name = mediaErrorName(error)
+  const message = mediaErrorMessage(error)
+  let devices = 'unknown'
+
+  try {
+    if (navigator.mediaDevices?.enumerateDevices) {
+      const videoInputs = (await navigator.mediaDevices.enumerateDevices())
+        .filter((device) => device.kind === 'videoinput')
+        .map((device, index) => device.label || `camera-${index + 1}`)
+      devices = videoInputs.length > 0 ? videoInputs.join(', ') : 'none'
+    }
+  } catch {
+    devices = 'enumeration failed'
+  }
+
+  const lowerMessage = message.toLowerCase()
+  const hint =
+    name === 'NotAllowedError' || name === 'SecurityError'
+      ? 'Windows camera privacy permission is blocking Electron/desktop apps.'
+      : name === 'NotReadableError' || lowerMessage.includes('could not start video source')
+        ? 'The webcam exists, but Windows/driver refused the stream. Close camera apps, enable desktop-app camera access, then restart GlanceShift.'
+        : name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError'
+          ? 'The selected camera did not satisfy WebGazer constraints.'
+          : 'Check Windows camera privacy settings and whether another app is using the camera.'
+
+  return `${name}: ${message}. Selected: ${lastChosenCameraLabel ?? 'browser default'}. Video inputs: ${devices}. ${hint}`
+}
+
 export function createGazeTracker(): GazeTracker {
   const sampleListeners = new Set<(s: GazeSample) => void>()
   const statusListeners = new Set<(s: TrackerStatus, error?: string) => void>()
@@ -114,6 +200,7 @@ export function createGazeTracker(): GazeTracker {
       wg.params.showFaceFeedbackBox = false
       wg.params.showGazeDot = false
       wg.params.showVideoPreview = false
+      wg.params.camConstraints = await chooseCameraConstraints()
       // 세션 간 캘리브레이션 보존 (localforage / IndexedDB)
       wg.params.saveDataAcrossSessions = true
 
@@ -162,9 +249,9 @@ export function createGazeTracker(): GazeTracker {
 
       setStatus('ready')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+      const msg = await describeCameraFailure(e)
       setStatus('error', msg)
-      throw e
+      throw new Error(msg)
     }
   }
 
