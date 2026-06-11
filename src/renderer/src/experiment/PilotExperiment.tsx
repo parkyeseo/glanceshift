@@ -77,10 +77,11 @@ type RuntimeTrial = {
 const UPRIGHT_MAX_DEG = DEFAULT_SLIDER_CONFIG.uprightMaxDeg
 const RELEASE_GAZE_OUT_MS = 2000
 const EXPERIMENT_EDGE: Edge = 'bottom'
-const SIDEBAR_TARGET_CENTERS = [0.14, 0.5, 0.86] as const
-const SIDEBAR_TARGET_MAJOR_FRAC = 0.16
-const SIDEBAR_TARGET_EDGE_FRAC = 0.11
-const SIDEBAR_TARGET_EDGE_MAX_PX = 120
+const SIDEBAR_TARGET_HITBOXES = [
+  { center: 0.14, majorFrac: 0.15, edgeFrac: 0.1, edgeMaxPx: 106 },
+  { center: 0.5, majorFrac: 0.1, edgeFrac: 0.065, edgeMaxPx: 76 },
+  { center: 0.86, majorFrac: 0.15, edgeFrac: 0.1, edgeMaxPx: 106 }
+] as const
 
 const RUN_HEADERS: Array<keyof RunRow & string> = [
   'session_id',
@@ -1306,13 +1307,15 @@ function targetFromGaze(
         : edge === 'top'
           ? gaze.y
           : viewport.h - gaze.y
+  const idx = SIDEBAR_TARGET_HITBOXES.findIndex(
+    (box) => Math.abs(major - box.center * length) <= (length * box.majorFrac) / 2
+  )
+  if (idx < 0) return null
+
+  const box = SIDEBAR_TARGET_HITBOXES[idx]
   const crossLength = isVertical ? viewport.w : viewport.h
-  const edgeLimitPx = Math.min(SIDEBAR_TARGET_EDGE_MAX_PX, crossLength * SIDEBAR_TARGET_EDGE_FRAC)
+  const edgeLimitPx = Math.min(box.edgeMaxPx, crossLength * box.edgeFrac)
   if (edgeDistance < 0 || edgeDistance > edgeLimitPx) return null
 
-  const halfMajorPx = (length * SIDEBAR_TARGET_MAJOR_FRAC) / 2
-  const idx = SIDEBAR_TARGET_CENTERS.findIndex(
-    (center) => Math.abs(major - center * length) <= halfMajorPx
-  )
-  return idx >= 0 ? PILOT_TARGETS[idx] : null
+  return PILOT_TARGETS[idx]
 }
