@@ -641,7 +641,10 @@
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-items: start center;
+  box-sizing: border-box;
+  padding-top: clamp(64px, 8vh, 96px);
+  padding-bottom: clamp(170px, 18vh, 224px);
 }
 
 .pilot-runner-hud {
@@ -689,8 +692,8 @@
   position: relative;
   width: min(520px, 48vw);
   min-width: 360px;
-  height: min(760px, 76vh);
-  min-height: 540px;
+  height: min(700px, 68vh);
+  min-height: min(500px, calc(100vh - 240px));
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background:
