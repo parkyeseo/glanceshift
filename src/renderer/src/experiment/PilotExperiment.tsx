@@ -1269,6 +1269,10 @@ export function PilotExperiment({
         selectedTarget={selectedTarget}
         menuOpen={menuOpen}
       />
+      <div className={`pilot-selected-target ${selectedTarget ? 'active' : 'empty'}`}>
+        <span>Selected</span>
+        <strong>{selectedTarget ? targetLabel(selectedTarget) : 'None'}</strong>
+      </div>
       {activePrompt && (
         <div className="pilot-command-status">
           {currentPromptText} · {selectedTarget ? `${targetLabel(selectedTarget)} 선택됨` : 'target 선택 중'}

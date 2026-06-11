@@ -69,6 +69,7 @@ export function MixerOverlay({
                 <div style={{ width: `${volumes[target] * 100}%` }} />
               </div>
               <div className="pilot-mixer-label">{targetLabel(target)}</div>
+              {isSelected && <div className="pilot-mixer-selected-mark">ACTIVE</div>}
             </div>
           )
         })}

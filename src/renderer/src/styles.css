@@ -643,8 +643,8 @@
   display: grid;
   place-items: start center;
   box-sizing: border-box;
-  padding-top: clamp(64px, 8vh, 96px);
-  padding-bottom: clamp(170px, 18vh, 224px);
+  padding-top: clamp(36px, 5vh, 56px);
+  padding-bottom: clamp(210px, 23vh, 280px);
 }
 
 .pilot-runner-hud {
@@ -692,8 +692,8 @@
   position: relative;
   width: min(520px, 48vw);
   min-width: 360px;
-  height: min(700px, 68vh);
-  min-height: min(500px, calc(100vh - 240px));
+  height: min(660px, 64vh);
+  min-height: clamp(380px, calc(100vh - 280px), 470px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background:
@@ -726,7 +726,7 @@
 
 .pilot-player {
   position: absolute;
-  bottom: 46px;
+  bottom: 72px;
   width: 46px;
   height: 46px;
   transform: translateX(-50%);
@@ -752,7 +752,7 @@
 
 .pilot-hit-burst {
   position: absolute;
-  bottom: 82px;
+  bottom: 108px;
   width: 74px;
   height: 42px;
   transform: translateX(-50%);
@@ -809,6 +809,44 @@
   background: rgba(0, 0, 0, 0.42);
   color: rgba(255, 255, 255, 0.78);
   font-size: 12px;
+}
+
+.pilot-selected-target {
+  position: absolute;
+  right: 24px;
+  top: 78px;
+  min-width: 156px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(12, 15, 22, 0.78);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+}
+
+.pilot-selected-target span {
+  display: block;
+  color: var(--gs-text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pilot-selected-target strong {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.pilot-selected-target.active {
+  border-color: rgba(90, 169, 255, 0.82);
+  background: rgba(24, 68, 118, 0.72);
+  box-shadow: 0 0 0 3px rgba(90, 169, 255, 0.16), 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.pilot-selected-target.empty strong {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .pilot-practice-tag {
@@ -993,7 +1031,7 @@
 
 .pilot-mixer-overlay.glanceshift.edge-bottom .pilot-mixer-target:nth-child(1),
 .pilot-mixer-overlay.glanceshift.edge-bottom .pilot-mixer-target:nth-child(3) {
-  transform: translateY(-26px);
+  transform: translateY(8px);
 }
 
 .pilot-mixer-overlay.glanceshift.edge-bottom .pilot-mixer-target:nth-child(2) {
@@ -1029,6 +1067,23 @@
 .pilot-mixer-target.selected {
   border-color: rgba(90, 169, 255, 0.8);
   background: rgba(90, 169, 255, 0.16);
+}
+
+.pilot-mixer-target.selected {
+  box-shadow: inset 0 0 0 2px rgba(90, 169, 255, 0.36);
+}
+
+.pilot-mixer-selected-mark {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(90, 169, 255, 0.9);
+  color: #07111f;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .pilot-mixer-label {
