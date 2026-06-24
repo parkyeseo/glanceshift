@@ -13,14 +13,15 @@
  * 원칙상 오버레이는 기본적으로 "보이지 않는 캔버스"여야 한다.
  */
 
-import { app, BrowserWindow, globalShortcut, screen, ipcMain, session, systemPreferences, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen, ipcMain, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { writeFile, mkdir, access } from 'node:fs/promises'
 import { constants as FS } from 'node:fs'
 import loudness from 'loudness'
+import { startTobiiBridge, stopTobiiBridge, tobiiBridgeStatus } from './tobii-bridge'
 
 const execAsync = promisify(exec)
 
@@ -28,6 +29,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let overlayWindow: BrowserWindow | null = null
 let clickThrough = true
+
+function resolveEvalLogDir(): string {
+  const configured = process.env.GLANCESHIFT_EVAL_LOG_DIR?.trim()
+  return configured ? resolve(configured) : join(process.cwd(), 'eval-logs')
+}
 
 /**
  * macOS 의 `brightness` CLI (brew install brightness) 의 절대 경로.
@@ -123,6 +129,11 @@ function createOverlayWindow(): void {
     overlayWindow?.show()
   })
 
+  overlayWindow.on('closed', () => {
+    stopTobiiBridge(null)
+    overlayWindow = null
+  })
+
   // HMR 지원
   if (process.env['ELECTRON_RENDERER_URL']) {
     overlayWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -144,12 +155,6 @@ function registerShortcuts(): void {
     overlayWindow?.webContents.send('glanceshift:click-through', clickThrough)
     // eslint-disable-next-line no-console
     console.log(`[main] click-through = ${clickThrough}`)
-  })
-
-  // 캘리브레이션 토글 — globalShortcut 으로 등록해야 click-through 상태에서도
-  // 키보드 입력을 받을 수 있다. (renderer 의 keydown 은 window focus 가 있어야 동작)
-  globalShortcut.register('CommandOrControl+Shift+K', () => {
-    overlayWindow?.webContents.send('glanceshift:toggle-calibration')
   })
 
   // 평가 모드 토글
@@ -178,15 +183,16 @@ ipcMain.handle('glanceshift:set-click-through', (_e, enabled: boolean) => {
   return clickThrough
 })
 
-// macOS: 카메라 권한 상태 조회·요청
-ipcMain.handle('glanceshift:get-camera-permission', async () => {
-  if (process.platform !== 'darwin') return 'granted'
-  return systemPreferences.getMediaAccessStatus('camera')
+ipcMain.handle('glanceshift:start-tobii', async () => {
+  return startTobiiBridge(overlayWindow)
 })
 
-ipcMain.handle('glanceshift:request-camera-permission', async () => {
-  if (process.platform !== 'darwin') return true
-  return systemPreferences.askForMediaAccess('camera')
+ipcMain.handle('glanceshift:stop-tobii', async () => {
+  stopTobiiBridge(overlayWindow)
+})
+
+ipcMain.handle('glanceshift:get-tobii-status', async () => {
+  return tobiiBridgeStatus()
 })
 
 // ===== OS Action Bridge — Phase 7 =====
@@ -278,10 +284,10 @@ ipcMain.handle('glanceshift:get-brightness', async () => {
   return null
 })
 
-// 평가 CSV 저장 — userData/eval-logs/<filename>.csv
+// 평가 CSV 저장 — <project>/eval-logs/<filename>.csv
 ipcMain.handle('glanceshift:save-eval-csv', async (_e, filename: string, content: string) => {
   const safeName = filename.replace(/[^\w.-]/g, '_')
-  const dir = join(app.getPath('userData'), 'eval-logs')
+  const dir = resolveEvalLogDir()
   await mkdir(dir, { recursive: true })
   const fullPath = join(dir, safeName)
   await writeFile(fullPath, content, 'utf8')
@@ -290,24 +296,11 @@ ipcMain.handle('glanceshift:save-eval-csv', async (_e, filename: string, content
 
 // Finder/Explorer 에서 평가 폴더 열기
 ipcMain.handle('glanceshift:reveal-eval-folder', async () => {
-  const dir = join(app.getPath('userData'), 'eval-logs')
+  const dir = resolveEvalLogDir()
   await mkdir(dir, { recursive: true })
   shell.openPath(dir)
   return dir
 })
-
-function installPermissionHandlers(): void {
-  // getUserMedia 호출 시 Electron 권한 자동 grant
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    if (permission === 'media') return callback(true)
-    if (permission === 'mediaKeySystem') return callback(true)
-    callback(false)
-  })
-  // 일부 Chromium 버전에서 사용하는 동기 권한 체크
-  session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
-    return permission === 'media' || permission === 'mediaKeySystem'
-  })
-}
 
 app.whenReady().then(async () => {
   // macOS dock 숨김 (오버레이 앱은 dock 노이즈를 줄임)
@@ -330,7 +323,6 @@ app.whenReady().then(async () => {
     }
   }
 
-  installPermissionHandlers()
   createOverlayWindow()
   registerShortcuts()
 
@@ -340,6 +332,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('will-quit', () => {
+  stopTobiiBridge(overlayWindow)
   globalShortcut.unregisterAll()
 })
 

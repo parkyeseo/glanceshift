@@ -1,4 +1,4 @@
-# ===== Node / npm =====
+# Node / npm
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -6,51 +6,49 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-store/
 
-# ===== Build output =====
+# Build output
 out/
 dist/
 build/
 release/
 *.tsbuildinfo
 .vite/
-
-# ===== electron-vite 임시 파일 =====
-# dev 시 생성되는 timestamp 붙은 config 파일
+.vite-cache/
 electron.vite.config.*.mjs
 electron.vite.config.*.js
 electron.vite.config.*.cjs
-# vite 내부 캐시
-.vite-cache/
 
-# ===== 자동 생성 정적 자산 =====
-# postinstall (scripts/copy-webgazer.mjs) 가 node_modules 에서 자동 복사하므로
-# 저장소에 넣지 않는다 (~19 MB).
-src/renderer/public/webgazer.js
-src/renderer/public/mediapipe/
-# Phase 2 초기에 @mediapipe/tasks-vision 시도했다가 폐기한 흔적 (남아 있어도 빌드 무관)
-src/renderer/public/mediapipe-tasks/
-
-# ===== TypeScript =====
-*.tsbuildinfo
-
-# ===== 환경변수 =====
+# Environment
 .env
 .env.*
 !.env.example
 
-# ===== 로그 / 리포트 =====
+# Logs and coverage
 *.log
 logs/
 coverage/
 .nyc_output/
+.codex-run-logs/
 
-# ===== OS =====
+# Local experiment data and private research context
+captures/
+eval-logs/
+context/
+*.csv
+*.mp4
+*.zip
+*.docx
+*.pptx
+*.xlsx
+*.pdf
+
+# OS files
 .DS_Store
 Thumbs.db
 ehthumbs.db
 desktop.ini
 
-# ===== Editor / IDE =====
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
@@ -59,7 +57,7 @@ desktop.ini
 *.swo
 *~
 
-# ===== Electron 패키징 결과물 =====
+# Electron package output
 *.app
 *.dmg
 *.exe
@@ -68,8 +66,5 @@ desktop.ini
 *.rpm
 *.snap
 
-# ===== 평가용 캡처/로그 (Phase 8) =====
-captures/
-eval-logs/
-*.csv
-*.mp4
+# Native Tobii helper build output
+tools/tobii-bridge/bin/

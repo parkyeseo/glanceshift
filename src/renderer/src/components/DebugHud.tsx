@@ -6,7 +6,7 @@
  */
 
 import { memo } from 'react'
-import type { HeadSample, HeadTrackerStatus } from '../perception/face-landmarker'
+import type { HeadSample, HeadTrackerStatus } from '../perception/tracker-types'
 import type { EdgeSnapshot } from '../perception/edge-detector'
 
 type Props = {
